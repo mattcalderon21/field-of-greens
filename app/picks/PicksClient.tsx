@@ -266,7 +266,7 @@ export default function PicksClient({ userId, profile, activeTournaments, burned
       // Load all golfers for burned display
       const { data: golfers } = await supabase.from('golfers').select('id, name')
       if (golfers) {
-        golfers.forEach((g: Golfer) => golferMap.set(g.id, g.name))
+        golfers.forEach((g) => golferMap.set(g.id, g.name))
         setAllGolfers(golferMap)
       }
 
