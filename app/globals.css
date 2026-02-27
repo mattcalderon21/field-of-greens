@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cream text-fairway;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gold text-fairway-dark font-semibold px-6 py-2.5 rounded-lg hover:bg-gold-light transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-fairway text-cream font-semibold px-6 py-2.5 rounded-lg hover:bg-fairway-light transition-colors duration-200;
+  }
+
+  .btn-ghost {
+    @apply border border-fairway/30 text-fairway font-medium px-6 py-2.5 rounded-lg hover:bg-fairway hover:text-cream transition-colors duration-200;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-red-700 transition-colors duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-cream-dark p-6;
+  }
+
+  .input {
+    @apply w-full border border-cream-darker rounded-lg px-3 py-2.5 text-fairway bg-white focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold transition-colors;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-fairway mb-1.5;
+  }
+
+  .earnings-num {
+    font-family: 'JetBrains Mono', monospace;
+    @apply tabular-nums;
+  }
+
+  .status-badge-upcoming {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cream-dark text-fairway/70;
+  }
+
+  .status-badge-active {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gold/20 text-gold-dark;
+  }
+
+  .status-badge-completed {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-fairway/10 text-fairway;
+  }
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Table striping for results grid */
+.results-table tbody tr:nth-child(even) {
+  @apply bg-cream/50;
+}
+
+/* Gold shimmer animation for #1 rank */
+@keyframes goldShimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.rank-first {
+  background: linear-gradient(90deg, #c9a84c, #e0c278, #c9a84c, #a88835, #c9a84c);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: goldShimmer 3s linear infinite;
+}
