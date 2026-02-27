@@ -34,7 +34,7 @@ export default async function ResultsPage() {
     if (!pickMap[pick.user_id]) pickMap[pick.user_id] = {}
     if (!pickMap[pick.user_id][pick.tournament_id]) pickMap[pick.user_id][pick.tournament_id] = []
     pickMap[pick.user_id][pick.tournament_id].push({
-      golfer: (pick.golfer as { name: string } | null)?.name ?? '—',
+      golfer: (pick.golfer as unknown as { name: string } | null)?.name ?? '—',
       earnings: pick.earnings ?? 0,
       is_locked: pick.is_locked ?? false,
     })

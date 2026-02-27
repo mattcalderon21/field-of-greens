@@ -45,10 +45,10 @@ async function getLeaderboard() {
     dataByUser[p.user_id].total += p.earnings ?? 0
 
     // Track last pick from completed tournament
-    const tournament = p.tournament as { name: string; is_completed: boolean; start_date: string } | null
+    const tournament = p.tournament as unknown as { name: string; is_completed: boolean; start_date: string } | null
     if (tournament?.is_completed && !dataByUser[p.user_id].lastPick) {
       dataByUser[p.user_id].lastPick = {
-        golfer: (p.golfer as { name: string } | null)?.name ?? '—',
+        golfer: (p.golfer as unknown as { name: string } | null)?.name ?? '—',
         earnings: p.earnings ?? 0,
         tournament: tournament.name,
       }

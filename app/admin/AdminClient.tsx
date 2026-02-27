@@ -513,10 +513,10 @@ function PicksPanel() {
               {picks.map((pick) => (
                 <tr key={pick.id}>
                   <td className="px-4 py-2.5 font-medium text-fairway">
-                    {(pick.profile as { display_name: string } | null)?.display_name ?? '—'}
+                    {(pick.profile as unknown as { display_name: string } | null)?.display_name ?? '—'}
                   </td>
                   <td className="px-4 py-2.5 text-fairway">
-                    {(pick.golfer as { name: string } | null)?.name ?? '—'}
+                    {(pick.golfer as unknown as { name: string } | null)?.name ?? '—'}
                   </td>
                   <td className="px-4 py-2.5 text-right earnings-num text-fairway">
                     {formatCurrency(pick.earnings)}
