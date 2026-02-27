@@ -580,7 +580,7 @@ function UsersPanel() {
       .from('picks')
       .select('golfer:golfers(name)')
       .eq('user_id', userId)
-    const names = (data ?? []).map((p) => (p.golfer as { name: string } | null)?.name ?? '—')
+    const names = (data ?? []).map((p) => (p.golfer as unknown as { name: string } | null)?.name ?? '—')
     setBurnedForUser({ userId, golfers: names })
   }
 
