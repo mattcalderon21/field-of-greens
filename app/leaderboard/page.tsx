@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
 
 export const metadata = { title: 'Leaderboard — The Field of Greens' }
-export const revalidate = 60 // revalidate every minute
+export const dynamic = 'force-dynamic'
 
 async function getLeaderboard() {
   const supabase = createClient()

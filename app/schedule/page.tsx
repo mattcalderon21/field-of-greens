@@ -3,6 +3,7 @@ import { formatDate, getPurseDisplay, getTournamentStatus } from '@/lib/utils'
 import type { Tournament } from '@/lib/types'
 
 export const metadata = { title: 'Schedule — The Field of Greens' }
+export const dynamic = 'force-dynamic'
 
 function StatusBadge({ status }: { status: 'upcoming' | 'active' | 'completed' }) {
   if (status === 'active') {
@@ -36,10 +37,11 @@ export default async function SchedulePage() {
     .eq('is_included_in_ond', true)
     .order('start_date', { ascending: true })
 
-  if (error || !tournaments) {
+  if (error || !tournaments?.length) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center text-fairway/60">
-        <p>Unable to load schedule. Please try again later.</p>
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+        <span className="text-4xl block mb-3">⛳</span>
+        <p className="text-fairway/60">Schedule is loading. Check back in a moment!</p>
       </div>
     )
   }

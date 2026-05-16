@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="max-w-7xl mx-auto px-4 text-center">
             <p className="font-display text-cream/70 text-lg mb-1">The Field of Greens</p>
             <p className="text-sm italic mb-3">"If you pick him, points will come."</p>
-            <p className="text-xs">2026 Season · Jan 15 – Aug 20 · Council Bluffs / Omaha / Storm Lake</p>
+            <p className="text-xs">2026 Season · Jan 15 – Aug 20</p>
           </div>
         </footer>
       </body>

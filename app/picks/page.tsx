@@ -25,12 +25,14 @@ export default async function PicksPage() {
     })
   }
 
-  // Get active tournaments
+  // Get active tournaments — either flagged is_active, or currently in-progress by date
+  const today = new Date().toISOString().split('T')[0]
   const { data: activeTournaments } = await supabase
     .from('tournaments')
     .select('*')
-    .eq('is_active', true)
     .eq('is_included_in_ond', true)
+    .eq('is_completed', false)
+    .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
     .order('start_date', { ascending: true })
 
   // Get all burned golfer IDs for this user (any pick this season = burned)

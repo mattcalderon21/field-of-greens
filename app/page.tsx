@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
 
+export const dynamic = 'force-dynamic'
+
 async function getLeaderboardPreview() {
   const supabase = createClient()
 
@@ -32,11 +34,16 @@ async function getLeaderboardPreview() {
 
 async function getActiveTournament() {
   const supabase = createClient()
+  const today = new Date().toISOString().split('T')[0]
+
+  // Find any tournament marked active OR whose dates span today
   const { data } = await supabase
     .from('tournaments')
     .select('*')
-    .eq('is_active', true)
     .eq('is_included_in_ond', true)
+    .eq('is_completed', false)
+    .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
+    .order('start_date', { ascending: true })
     .limit(1)
     .single()
   return data
@@ -166,7 +173,7 @@ export default async function LandingPage() {
           <div className="mt-6 p-5 bg-fairway rounded-xl text-cream">
             <p className="font-display text-lg font-semibold mb-1">2026 Season</p>
             <p className="text-cream/70 text-sm">36 tournaments · Sony Open through BMW Championship</p>
-            <p className="text-cream/70 text-sm mt-1">Iowa & Nebraska bragging rights on the line. 🌽</p>
+            <p className="text-cream/70 text-sm mt-1">Midwest bragging rights on the line. 🌽</p>
             <Link href="/schedule" className="inline-block mt-4 text-gold text-sm font-medium hover:underline">
               View full schedule →
             </Link>

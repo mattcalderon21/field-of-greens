@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 export const metadata = { title: 'Results — The Field of Greens' }
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
 async function getResults() {
   const supabase = createClient()
