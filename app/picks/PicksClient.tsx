@@ -222,6 +222,14 @@ export default function PicksClient({ userId, profile, activeTournaments, burned
     setTournamentStates((prev) => ({
       ...prev,
       [tournamentId]: {
+        // Spread safe defaults first so all fields are always present,
+        // then existing state (preserves any prior picks/field), then
+        // override loading/error for the in-flight request.
+        field: [],
+        currentPicks: [],
+        selectedGolferIds: [null],
+        saving: false,
+        success: null,
         ...prev[tournamentId],
         loading: true,
         error: null,
