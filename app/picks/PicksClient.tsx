@@ -219,22 +219,23 @@ export default function PicksClient({ userId, profile, activeTournaments, burned
   const [allGolfers, setAllGolfers] = useState<Map<number, string>>(new Map())
 
   const loadTournamentData = useCallback(async (tournamentId: number, numSlots: number) => {
-    setTournamentStates((prev) => ({
-      ...prev,
-      [tournamentId]: {
-        // Spread safe defaults first so all fields are always present,
-        // then existing state (preserves any prior picks/field), then
-        // override loading/error for the in-flight request.
-        field: [],
-        currentPicks: [],
-        selectedGolferIds: [null],
-        saving: false,
-        success: null,
-        ...prev[tournamentId],
-        loading: true,
-        error: null,
-      },
-    }))
+    setTournamentStates((prev) => {
+      const existing = prev[tournamentId]
+      return {
+        ...prev,
+        [tournamentId]: existing
+          ? { ...existing, loading: true, error: null }
+          : {
+              field: [],
+              currentPicks: [],
+              selectedGolferIds: [null],
+              saving: false,
+              success: null,
+              loading: true,
+              error: null,
+            },
+      }
+    })
 
     const [{ data: field }, { data: currentPicks }] = await Promise.all([
       supabase
