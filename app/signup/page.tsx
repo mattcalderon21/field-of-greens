@@ -172,7 +172,7 @@ export default function SignupPage() {
         </div>
 
         <div className="mt-4 p-4 bg-fairway/5 rounded-xl border border-fairway/10 text-sm text-fairway/60 text-center">
-          This contest is for the Iowa/Nebraska friend group. If you have the link, you&apos;re in. 🌽⛳
+          If you received a link to this page, you&apos;ve been invited to the Field of Greens One-and-Done contest. May the best picks win. ⛳
         </div>
       </div>
     </div>
