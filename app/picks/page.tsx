@@ -3,12 +3,14 @@ import { redirect } from 'next/navigation'
 import PicksClient from './PicksClient'
 
 export const metadata = { title: 'My Pick — The Field of Greens' }
+export const dynamic = 'force-dynamic'
 
 export default async function PicksPage() {
   const supabase = createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { data: authData, error: authError } = await supabase.auth.getUser()
+  const user = authData?.user ?? null
+  if (authError || !user) redirect('/login')
 
   const { data: profile } = await supabase
     .from('profiles')
