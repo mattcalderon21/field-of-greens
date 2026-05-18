@@ -7,6 +7,18 @@ import type { Tournament, Golfer, Profile, Pick, TournamentField } from '@/lib/t
 
 type Tab = 'tournaments' | 'fields' | 'results' | 'picks' | 'users'
 
+// Shared helper — normalizes "Last, First +" → "First Last"
+function normalizeName(raw: string): string {
+  let name = raw.replace(/[\s+#*]+$/, '').trim()
+  if (name.includes(',')) {
+    const commaIdx = name.indexOf(',')
+    const last = name.slice(0, commaIdx).trim()
+    const first = name.slice(commaIdx + 1).trim()
+    name = `${first} ${last}`
+  }
+  return name
+}
+
 // ── Tournament Management ──────────────────────────────────────────────────
 
 function TournamentsPanel() {
@@ -227,18 +239,6 @@ function FieldPanel() {
     setBulkImporting(true)
     setBulkMsg(null)
 
-    // Normalize "Last, First +" → "First Last"
-    const normalizeName = (raw: string): string => {
-      let name = raw.replace(/[\s+#*]+$/, '').trim()
-      if (name.includes(',')) {
-        const commaIdx = name.indexOf(',')
-        const last = name.slice(0, commaIdx).trim()
-        const first = name.slice(commaIdx + 1).trim()
-        name = `${first} ${last}`
-      }
-      return name
-    }
-
     const names = bulkText.split('\n').map((n) => normalizeName(n)).filter(Boolean)
     if (names.length === 0) { setBulkImporting(false); return }
 
@@ -423,10 +423,15 @@ function ResultsPanel() {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [selectedTournament, setSelectedTournament] = useState<number | null>(null)
   const [field, setField] = useState<TournamentField[]>([])
+  const [pickedGolferIds, setPickedGolferIds] = useState<Set<number>>(new Set())
   const [earnings, setEarnings] = useState<Record<number, string>>({})
   const [positions, setPositions] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkText, setBulkText] = useState('')
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
+  const [bulkImporting, setBulkImporting] = useState(false)
 
   useEffect(() => {
     supabase
@@ -438,16 +443,30 @@ function ResultsPanel() {
   }, [supabase])
 
   const loadField = async (tid: number) => {
-    const { data } = await supabase
-      .from('tournament_fields')
-      .select('*, golfer:golfers(name)')
-      .eq('tournament_id', tid)
-      .order('golfer(name)', { ascending: true })
+    const [{ data }, { data: picksData }] = await Promise.all([
+      supabase
+        .from('tournament_fields')
+        .select('*, golfer:golfers(name)')
+        .eq('tournament_id', tid),
+      supabase
+        .from('picks')
+        .select('golfer_id')
+        .eq('tournament_id', tid),
+    ])
     const f = (data ?? []) as TournamentField[]
-    setField(f)
+    const pickedIds = new Set((picksData ?? []).map((p) => p.golfer_id as number))
+    setPickedGolferIds(pickedIds)
+    // Sort: picked golfers first, then alphabetically within each group
+    const sorted = [...f].sort((a, b) => {
+      const aPicked = pickedIds.has(a.golfer_id) ? 0 : 1
+      const bPicked = pickedIds.has(b.golfer_id) ? 0 : 1
+      if (aPicked !== bPicked) return aPicked - bPicked
+      return (a.golfer?.name ?? '').localeCompare(b.golfer?.name ?? '')
+    })
+    setField(sorted)
     const earn: Record<number, string> = {}
     const pos: Record<number, string> = {}
-    f.forEach((tf) => {
+    sorted.forEach((tf) => {
       earn[tf.id] = tf.earnings != null ? String(tf.earnings) : ''
       pos[tf.id] = tf.finish_position ?? ''
     })
@@ -494,6 +513,90 @@ function ResultsPanel() {
     setSaving(false)
   }
 
+  const bulkImportResults = async () => {
+    if (!selectedTournament || !bulkText.trim() || field.length === 0) return
+    setBulkImporting(true)
+    setBulkMsg(null)
+
+    const nameMap = new Map(
+      field.map((tf) => [(tf.golfer?.name ?? '').toLowerCase(), tf])
+    )
+
+    const lines = bulkText.split('\n').map((l) => l.trim()).filter(Boolean)
+    const updates: { tf: TournamentField; position: string; earningsVal: number }[] = []
+    const unmatched: string[] = []
+
+    for (const line of lines) {
+      // Detect separator: tab, pipe, or comma
+      let cols: string[]
+      if (line.includes('\t')) {
+        cols = line.split('\t')
+      } else if (line.includes('|')) {
+        cols = line.split('|')
+      } else {
+        // Split on first two commas to allow comma in position values
+        const parts = line.split(',')
+        cols = [parts[0], parts[1] ?? '', parts.slice(2).join(',')]
+      }
+
+      const rawName = normalizeName(cols[0] ?? '')
+      const position = (cols[1] ?? '').trim()
+      const earningsVal = parseFloat((cols[2] ?? '').replace(/[$,\s]/g, '')) || 0
+
+      const tf = nameMap.get(rawName.toLowerCase())
+      if (!tf) {
+        unmatched.push(rawName)
+        continue
+      }
+      updates.push({ tf, position, earningsVal })
+    }
+
+    // Update tournament_fields
+    for (const { tf, position, earningsVal } of updates) {
+      await supabase
+        .from('tournament_fields')
+        .update({ earnings: earningsVal || null, finish_position: position || null })
+        .eq('id', tf.id)
+    }
+
+    // Update picks.earnings + is_locked
+    if (updates.length > 0) {
+      const { data: allPicks } = await supabase
+        .from('picks')
+        .select('id, golfer_id')
+        .eq('tournament_id', selectedTournament)
+
+      if (allPicks) {
+        for (const pick of allPicks) {
+          const update = updates.find((u) => u.tf.golfer_id === pick.golfer_id)
+          if (update) {
+            await supabase
+              .from('picks')
+              .update({ earnings: update.earningsVal, is_locked: true })
+              .eq('id', pick.id)
+          }
+        }
+      }
+    }
+
+    // Sync local state so manual table reflects changes immediately
+    setEarnings((prev) => {
+      const next = { ...prev }
+      updates.forEach(({ tf, earningsVal }) => { next[tf.id] = earningsVal ? String(earningsVal) : '' })
+      return next
+    })
+    setPositions((prev) => {
+      const next = { ...prev }
+      updates.forEach(({ tf, position }) => { next[tf.id] = position })
+      return next
+    })
+
+    const unmatchedNote = unmatched.length > 0 ? ` Unmatched: ${unmatched.join(', ')}.` : ''
+    setBulkMsg(`${updates.length} golfer${updates.length !== 1 ? 's' : ''} updated.${unmatchedNote}`)
+    setBulkText('')
+    setBulkImporting(false)
+  }
+
   return (
     <div>
       <h2 className="font-display text-xl font-bold text-fairway mb-4">Results Entry</h2>
@@ -516,6 +619,44 @@ function ResultsPanel() {
 
       {selectedTournament && field.length > 0 && (
         <>
+          {/* Bulk Import */}
+          <div className="card mb-4">
+            <button
+              className="flex items-center gap-2 w-full text-left font-semibold text-fairway"
+              onClick={() => setBulkOpen(!bulkOpen)}
+            >
+              <span className="text-xs">{bulkOpen ? '▼' : '▶'}</span>
+              Bulk Import Results
+            </button>
+            {bulkOpen && (
+              <div className="mt-3 space-y-3">
+                <p className="text-sm text-fairway/60">
+                  Paste results one per line — columns separated by tab, comma, or pipe:<br />
+                  <span className="font-mono">Golfer Name &nbsp; Finish Pos. &nbsp; Earnings</span><br />
+                  Earnings can be omitted for CUT/WD (defaults to 0). Supports &ldquo;Last, First&rdquo; names.
+                </p>
+                <textarea
+                  className="input w-full font-mono text-sm"
+                  rows={10}
+                  placeholder={'Scottie Scheffler\t1\t3600000\nRory McIlroy\tT2\t2160000\nXander Schauffele\tCUT\nScheffler, Scottie\t1\t$3,600,000'}
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={bulkImportResults}
+                    disabled={bulkImporting || !bulkText.trim()}
+                    className="btn-primary"
+                  >
+                    {bulkImporting ? 'Importing…' : 'Import Results'}
+                  </button>
+                  {bulkMsg && <span className="text-sm text-gold">{bulkMsg}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Manual entry table */}
           <div className="card p-0 overflow-hidden mb-4">
             <div className="bg-fairway text-cream text-sm px-4 py-2 grid grid-cols-3 gap-3">
               <span className="font-medium">Golfer</span>
@@ -523,25 +664,42 @@ function ResultsPanel() {
               <span className="font-medium">Earnings ($)</span>
             </div>
             <div className="divide-y divide-cream-dark max-h-[500px] overflow-y-auto">
-              {field.map((tf) => (
-                <div key={tf.id} className="grid grid-cols-3 gap-3 items-center px-4 py-2">
-                  <span className="text-sm font-medium text-fairway">{tf.golfer?.name}</span>
-                  <input
-                    className="input text-sm py-1.5"
-                    placeholder="e.g. T3, CUT, WD"
-                    value={positions[tf.id] ?? ''}
-                    onChange={(e) => setPositions((p) => ({ ...p, [tf.id]: e.target.value }))}
-                  />
-                  <input
-                    className="input text-sm py-1.5 earnings-num"
-                    type="number"
-                    placeholder="0"
-                    min={0}
-                    value={earnings[tf.id] ?? ''}
-                    onChange={(e) => setEarnings((p) => ({ ...p, [tf.id]: e.target.value }))}
-                  />
-                </div>
-              ))}
+              {field.map((tf, idx) => {
+                const isPicked = pickedGolferIds.has(tf.golfer_id)
+                const prevPicked = idx > 0 ? pickedGolferIds.has(field[idx - 1].golfer_id) : true
+                const showDivider = !isPicked && prevPicked && pickedGolferIds.size > 0
+                return (
+                  <div key={tf.id}>
+                    {showDivider && (
+                      <div className="px-4 py-1.5 text-xs text-fairway/40 bg-cream/60 border-b border-cream-dark">
+                        — Rest of field —
+                      </div>
+                    )}
+                    <div className={`grid grid-cols-3 gap-3 items-center px-4 py-2 ${isPicked ? 'bg-gold/5 border-l-2 border-gold' : ''}`}>
+                      <span className="text-sm font-medium text-fairway flex items-center gap-2">
+                        {tf.golfer?.name}
+                        {isPicked && (
+                          <span className="text-xs bg-gold/20 text-fairway px-1.5 py-0.5 rounded-full font-normal">Picked</span>
+                        )}
+                      </span>
+                      <input
+                        className="input text-sm py-1.5"
+                        placeholder="e.g. T3, CUT, WD"
+                        value={positions[tf.id] ?? ''}
+                        onChange={(e) => setPositions((p) => ({ ...p, [tf.id]: e.target.value }))}
+                      />
+                      <input
+                        className="input text-sm py-1.5 earnings-num"
+                        type="number"
+                        placeholder="0"
+                        min={0}
+                        value={earnings[tf.id] ?? ''}
+                        onChange={(e) => setEarnings((p) => ({ ...p, [tf.id]: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
