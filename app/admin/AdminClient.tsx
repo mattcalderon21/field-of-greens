@@ -723,6 +723,9 @@ function PicksPanel() {
   const [selectedTournament, setSelectedTournament] = useState<number | null>(null)
   const [picks, setPicks] = useState<Pick[]>([])
   const [loading, setLoading] = useState(false)
+  const [editPickId, setEditPickId] = useState<number | null>(null)
+  const [editGolferId, setEditGolferId] = useState<number | ''>('')
+  const [fieldGolfers, setFieldGolfers] = useState<{ golfer_id: number; name: string; earnings: number | null }[]>([])
 
   useEffect(() => {
     supabase.from('tournaments').select('*').order('start_date', { ascending: false })
@@ -731,16 +734,43 @@ function PicksPanel() {
 
   const loadPicks = async (tid: number) => {
     setLoading(true)
-    const { data } = await supabase
-      .from('picks')
-      .select('*, golfer:golfers(name), profile:profiles(display_name)')
-      .eq('tournament_id', tid)
-    setPicks((data ?? []) as Pick[])
+    const [{ data: picksData }, { data: fieldData }] = await Promise.all([
+      supabase
+        .from('picks')
+        .select('*, golfer:golfers(name), profile:profiles(display_name)')
+        .eq('tournament_id', tid),
+      supabase
+        .from('tournament_fields')
+        .select('golfer_id, earnings, golfer:golfers(name)')
+        .eq('tournament_id', tid)
+        .order('golfer(name)', { ascending: true }),
+    ])
+    setPicks((picksData ?? []) as Pick[])
+    setFieldGolfers(
+      (fieldData ?? []).map((tf) => ({
+        golfer_id: tf.golfer_id as number,
+        name: (tf.golfer as unknown as { name: string } | null)?.name ?? '',
+        earnings: tf.earnings as number | null,
+      }))
+    )
     setLoading(false)
   }
 
   const lockPick = async (pickId: number, lock: boolean) => {
     await supabase.from('picks').update({ is_locked: lock }).eq('id', pickId)
+    if (selectedTournament) await loadPicks(selectedTournament)
+  }
+
+  const updatePick = async (pickId: number) => {
+    if (!editGolferId) return
+    const tf = fieldGolfers.find((g) => g.golfer_id === editGolferId)
+    const earningsVal = tf?.earnings ?? 0
+    await supabase
+      .from('picks')
+      .update({ golfer_id: editGolferId, earnings: earningsVal })
+      .eq('id', pickId)
+    setEditPickId(null)
+    setEditGolferId('')
     if (selectedTournament) await loadPicks(selectedTournament)
   }
 
@@ -777,34 +807,69 @@ function PicksPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-dark">
-              {picks.map((pick) => (
-                <tr key={pick.id}>
-                  <td className="px-4 py-2.5 font-medium text-fairway">
-                    {(pick.profile as unknown as { display_name: string } | null)?.display_name ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-fairway">
-                    {(pick.golfer as unknown as { name: string } | null)?.name ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right earnings-num text-fairway">
-                    {formatCurrency(pick.earnings)}
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    {pick.is_locked ? (
-                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">🔒 Locked</span>
-                    ) : (
-                      <span className="text-xs bg-fairway/10 text-fairway px-2 py-0.5 rounded-full">Open</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    <button
-                      onClick={() => lockPick(pick.id, !pick.is_locked)}
-                      className="text-xs border border-cream-darker px-2 py-1 rounded hover:bg-cream-dark transition-colors"
-                    >
-                      {pick.is_locked ? 'Unlock' : 'Lock'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {picks.map((pick) => {
+                const isEditing = editPickId === pick.id
+                const golferName = (pick.golfer as unknown as { name: string } | null)?.name ?? '—'
+                return (
+                  <tr key={pick.id}>
+                    <td className="px-4 py-2.5 font-medium text-fairway">
+                      {(pick.profile as unknown as { display_name: string } | null)?.display_name ?? '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-fairway">
+                      {isEditing ? (
+                        <select
+                          className="input text-sm py-1"
+                          value={editGolferId}
+                          onChange={(e) => setEditGolferId(Number(e.target.value))}
+                        >
+                          <option value="">— Select golfer —</option>
+                          {fieldGolfers.map((g) => (
+                            <option key={g.golfer_id} value={g.golfer_id}>{g.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        golferName
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right earnings-num text-fairway">
+                      {formatCurrency(pick.earnings)}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      {pick.is_locked ? (
+                        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">🔒 Locked</span>
+                      ) : (
+                        <span className="text-xs bg-fairway/10 text-fairway px-2 py-0.5 rounded-full">Open</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      {isEditing ? (
+                        <div className="flex gap-1 justify-center">
+                          <button
+                            onClick={() => updatePick(pick.id)}
+                            disabled={!editGolferId}
+                            className="text-xs bg-fairway text-cream px-2 py-1 rounded hover:bg-fairway/80 transition-colors disabled:opacity-40"
+                          >Save</button>
+                          <button
+                            onClick={() => { setEditPickId(null); setEditGolferId('') }}
+                            className="text-xs border border-cream-darker px-2 py-1 rounded hover:bg-cream-dark transition-colors"
+                          >Cancel</button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1 justify-center">
+                          <button
+                            onClick={() => { setEditPickId(pick.id); setEditGolferId(pick.golfer_id) }}
+                            className="text-xs border border-cream-darker px-2 py-1 rounded hover:bg-cream-dark transition-colors"
+                          >Edit</button>
+                          <button
+                            onClick={() => lockPick(pick.id, !pick.is_locked)}
+                            className="text-xs border border-cream-darker px-2 py-1 rounded hover:bg-cream-dark transition-colors"
+                          >{pick.is_locked ? 'Unlock' : 'Lock'}</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
