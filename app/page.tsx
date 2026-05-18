@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
 
@@ -57,7 +58,18 @@ const RULES = [
   { icon: '🏆', text: 'Highest aggregate earnings after 36 events wins.' },
 ]
 
-export default async function LandingPage() {
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: { error?: string; error_code?: string }
+}) {
+  // Supabase lands auth errors (expired links, access denied, etc.) on the
+  // site root. Catch them here and bounce to the login page with context.
+  if (searchParams.error) {
+    const code = searchParams.error_code ?? searchParams.error
+    redirect(`/login?error=${encodeURIComponent(code)}`)
+  }
+
   const [leaderboard, activeTournament] = await Promise.all([
     getLeaderboardPreview(),
     getActiveTournament(),

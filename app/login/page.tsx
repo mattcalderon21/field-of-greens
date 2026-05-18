@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const isStubUrl =
@@ -26,7 +26,18 @@ export default function LoginPage() {
   const [resetSent, setResetSent] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlError = searchParams.get('error')
   const supabase = createClient()
+
+  const urlErrorMessage =
+    urlError === 'otp_expired'
+      ? 'That reset link has expired. Request a new one below using "Forgot your password?"'
+      : urlError === 'auth_callback_failed'
+      ? 'Sign-in link failed. Please try signing in again.'
+      : urlError
+      ? 'Something went wrong with that link. Please try again.'
+      : null
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -83,6 +94,12 @@ export default function LoginPage() {
             >
               Get your Supabase API keys →
             </a>
+          </div>
+        )}
+
+        {urlErrorMessage && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+            {urlErrorMessage}
           </div>
         )}
 
