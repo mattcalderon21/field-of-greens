@@ -163,6 +163,11 @@ function FieldPanel() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [bulkText, setBulkText] = useState('')
+  const [bulkTour, setBulkTour] = useState('PGA Tour')
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
+  const [bulkImporting, setBulkImporting] = useState(false)
+  const [showBulkImport, setShowBulkImport] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -217,6 +222,54 @@ function FieldPanel() {
     if (selectedTournament) await loadField(selectedTournament)
   }
 
+  const bulkImportField = async () => {
+    if (!selectedTournament || !bulkText.trim()) return
+    setBulkImporting(true)
+    setBulkMsg(null)
+
+    const names = bulkText.split('\n').map((n) => n.trim()).filter(Boolean)
+    if (names.length === 0) { setBulkImporting(false); return }
+
+    const existingMap = new Map(allGolfers.map((g) => [g.name.toLowerCase(), g]))
+    const newNames = names.filter((n) => !existingMap.has(n.toLowerCase()))
+
+    if (newNames.length > 0) {
+      const { data: inserted, error } = await supabase
+        .from('golfers')
+        .insert(newNames.map((name) => ({ name, primary_tour: bulkTour })))
+        .select()
+      if (error) {
+        setBulkMsg(`Error creating golfers: ${error.message}`)
+        setBulkImporting(false)
+        return
+      }
+      const newList = [...allGolfers, ...(inserted ?? [])]
+      setAllGolfers(newList.sort((a, b) => a.name.localeCompare(b.name)));
+      (inserted ?? []).forEach((g) => existingMap.set(g.name.toLowerCase(), g))
+    }
+
+    const fieldEntries = names
+      .map((name) => {
+        const g = existingMap.get(name.toLowerCase())
+        return g ? { tournament_id: selectedTournament, golfer_id: g.id } : null
+      })
+      .filter((e): e is { tournament_id: number; golfer_id: number } => e !== null)
+
+    const { error: fieldError } = await supabase
+      .from('tournament_fields')
+      .upsert(fieldEntries, { onConflict: 'tournament_id,golfer_id', ignoreDuplicates: true })
+
+    if (fieldError) {
+      setBulkMsg(`Error adding to field: ${fieldError.message}`)
+    } else {
+      const alreadyExisted = names.length - newNames.length
+      setBulkMsg(`Done! ${fieldEntries.length} players added to field (${newNames.length} new golfers created, ${alreadyExisted} already existed).`)
+      setBulkText('')
+      await loadField(selectedTournament)
+    }
+    setBulkImporting(false)
+  }
+
   if (loading) return <div className="text-fairway/50 text-center py-8">Loading…</div>
 
   return (
@@ -269,6 +322,50 @@ function FieldPanel() {
               </button>
             </div>
             {msg && <p className="text-sm text-gold mt-2">{msg}</p>}
+          </div>
+
+          {/* Bulk Import */}
+          <div className="card mb-4">
+            <button
+              className="flex items-center gap-2 w-full text-left font-semibold text-fairway"
+              onClick={() => setShowBulkImport(!showBulkImport)}
+            >
+              <span className="text-xs">{showBulkImport ? '▼' : '▶'}</span>
+              Bulk Import from List
+            </button>
+            {showBulkImport && (
+              <div className="mt-3 space-y-3">
+                <p className="text-sm text-fairway/60">
+                  Paste player names one per line (e.g. copied from a golf site). New golfers are created automatically.
+                </p>
+                <textarea
+                  className="input w-full font-mono text-sm"
+                  rows={8}
+                  placeholder={'Scottie Scheffler\nRory McIlroy\nCollin Morikawa\n...'}
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                />
+                <div className="flex flex-wrap gap-3 items-center">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-fairway/70 whitespace-nowrap">Tour for new players:</label>
+                    <select className="input py-1" value={bulkTour} onChange={(e) => setBulkTour(e.target.value)}>
+                      <option>PGA Tour</option>
+                      <option>LIV Golf</option>
+                      <option>DP World Tour</option>
+                      <option>Korn Ferry Tour</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={bulkImportField}
+                    disabled={bulkImporting || !bulkText.trim()}
+                    className="btn-primary"
+                  >
+                    {bulkImporting ? 'Importing…' : 'Import Players'}
+                  </button>
+                </div>
+                {bulkMsg && <p className="text-sm text-gold">{bulkMsg}</p>}
+              </div>
+            )}
           </div>
 
           {/* Current field */}
