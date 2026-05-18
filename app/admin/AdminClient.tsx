@@ -227,7 +227,19 @@ function FieldPanel() {
     setBulkImporting(true)
     setBulkMsg(null)
 
-    const names = bulkText.split('\n').map((n) => n.trim()).filter(Boolean)
+    // Normalize "Last, First +" → "First Last"
+    const normalizeName = (raw: string): string => {
+      let name = raw.replace(/[\s+#*]+$/, '').trim()
+      if (name.includes(',')) {
+        const commaIdx = name.indexOf(',')
+        const last = name.slice(0, commaIdx).trim()
+        const first = name.slice(commaIdx + 1).trim()
+        name = `${first} ${last}`
+      }
+      return name
+    }
+
+    const names = bulkText.split('\n').map((n) => normalizeName(n)).filter(Boolean)
     if (names.length === 0) { setBulkImporting(false); return }
 
     const existingMap = new Map(allGolfers.map((g) => [g.name.toLowerCase(), g]))
