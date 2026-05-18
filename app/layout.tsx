@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import Navbar from '@/components/Navbar'
+import AuthRecoveryHandler from '@/components/AuthRecoveryHandler'
 
 export const metadata: Metadata = {
   title: 'The Field of Greens',
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen flex flex-col">
         <Navbar />
+        <AuthRecoveryHandler />
         <main className="flex-1">{children}</main>
         <footer className="bg-fairway-dark text-cream/50 py-8 mt-16">
           <div className="max-w-7xl mx-auto px-4 text-center">

@@ -42,7 +42,9 @@ function LoginPageContent() {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setResetLoading(true)
-    const redirectTo = `${window.location.origin}/api/auth/callback?next=/reset-password`
+    // Strip www so the URL always matches Supabase's canonical Site URL
+    const origin = window.location.origin.replace(/^(https?:\/\/)www\./, '$1')
+    const redirectTo = `${origin}/api/auth/callback?next=/reset-password`
     await supabase.auth.resetPasswordForEmail(resetEmail, { redirectTo })
     // Always show success — don't reveal whether the email exists
     setResetSent(true)
