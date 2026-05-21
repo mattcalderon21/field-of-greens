@@ -33,6 +33,47 @@ async function getLeaderboardPreview() {
   return leaderboard
 }
 
+async function getCurrentWeekPicks(tournamentId: number, isCompleted: boolean) {
+  const supabase = createClient()
+
+  const [{ data: profiles }, { data: picks }] = await Promise.all([
+    supabase.from('profiles').select('id, display_name'),
+    supabase
+      .from('picks')
+      .select('user_id, earnings, golfer:golfers(name)')
+      .eq('tournament_id', tournamentId),
+  ])
+
+  if (!profiles) return []
+
+  const pickMap = new Map(
+    (picks ?? []).map((p) => [
+      p.user_id,
+      {
+        golfer_name: (p.golfer as unknown as { name: string } | null)?.name ?? null,
+        earnings: (p.earnings as number) ?? 0,
+      },
+    ])
+  )
+
+  const rows = profiles.map((p) => ({
+    display_name: p.display_name,
+    golfer_name: pickMap.get(p.id)?.golfer_name ?? null,
+    earnings: pickMap.get(p.id)?.earnings ?? 0,
+  }))
+
+  if (isCompleted) {
+    rows.sort((a, b) => b.earnings - a.earnings)
+  } else {
+    rows.sort((a, b) => {
+      if (!!a.golfer_name !== !!b.golfer_name) return a.golfer_name ? -1 : 1
+      return a.display_name.localeCompare(b.display_name)
+    })
+  }
+
+  return rows
+}
+
 async function getActiveTournament() {
   const supabase = createClient()
   const today = new Date().toISOString().split('T')[0]
@@ -74,6 +115,10 @@ export default async function LandingPage({
     getLeaderboardPreview(),
     getActiveTournament(),
   ])
+
+  const weekPicks = activeTournament
+    ? await getCurrentWeekPicks(activeTournament.id, activeTournament.is_completed)
+    : []
 
   const leader = leaderboard[0]
 
@@ -192,6 +237,41 @@ export default async function LandingPage({
           </div>
         </section>
       </div>
+
+      {/* ── This Week's Picks ── */}
+      {activeTournament && weekPicks.length > 0 && (
+        <div className="max-w-6xl mx-auto px-4 pb-16">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="font-display text-2xl font-bold text-fairway">This Week&rsquo;s Picks</h2>
+            <span className="text-sm text-fairway/50">{activeTournament.name}</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {weekPicks.map((row) => (
+              <div
+                key={row.display_name}
+                className={`p-4 rounded-xl border ${
+                  row.golfer_name
+                    ? 'bg-white border-cream-dark'
+                    : 'bg-cream/40 border-cream-dark'
+                }`}
+              >
+                <p className="text-xs text-fairway/50 font-medium uppercase tracking-wide truncate mb-1">
+                  {row.display_name}
+                </p>
+                <p className={`font-semibold text-sm truncate ${row.golfer_name ? 'text-fairway' : 'text-fairway/30'}`}>
+                  {row.golfer_name ?? '—'}
+                </p>
+                {activeTournament.is_completed && row.golfer_name && (
+                  <p className="text-xs earnings-num text-gold mt-1">
+                    {formatCurrency(row.earnings)}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
