@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed:picks": "ts-node --project tsconfig.scripts.json scripts/seed-picks.ts"
+    "seed:picks": "ts-node --project tsconfig.scripts.json scripts/seed-picks.ts",
+    "fix:golfer-names": "ts-node --project tsconfig.scripts.json scripts/fix-golfer-odds-names.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

@@ -7,9 +7,14 @@ import type { Tournament, Golfer, Profile, Pick, TournamentField } from '@/lib/t
 
 type Tab = 'tournaments' | 'fields' | 'results' | 'picks' | 'users'
 
-// Shared helper — normalizes "Last, First +" → "First Last"
+// Shared helper — normalizes various copy-paste name formats to "First Last"
 function normalizeName(raw: string): string {
-  let name = raw.replace(/[\s+#*]+$/, '').trim()
+  let name = raw.trim()
+  // Strip trailing betting odds: "+650", "-120", "(+1400)", "(-105)"
+  name = name.replace(/\s+\(?[+-]\d+\)?$/, '').trim()
+  // Strip other trailing noise: +, #, *
+  name = name.replace(/[\s+#*]+$/, '').trim()
+  // Convert "Last, First" → "First Last"
   if (name.includes(',')) {
     const commaIdx = name.indexOf(',')
     const last = name.slice(0, commaIdx).trim()
