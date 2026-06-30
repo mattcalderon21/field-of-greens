@@ -71,8 +71,26 @@ async function getLeaderboard() {
   return ranked
 }
 
+async function getLastCompletedTournament() {
+  const supabase = createClient()
+
+  const { data } = await supabase
+    .from('tournaments')
+    .select('id, name, start_date')
+    .eq('is_included_in_ond', true)
+    .eq('is_completed', true)
+    .order('start_date', { ascending: false })
+    .limit(1)
+    .single()
+
+  return data
+}
+
 export default async function LeaderboardPage() {
-  const leaderboard = await getLeaderboard()
+  const [leaderboard, lastCompletedTournament] = await Promise.all([
+    getLeaderboard(),
+    getLastCompletedTournament(),
+  ])
 
   const podium = leaderboard.slice(0, 3)
   const rest = leaderboard.slice(3)
@@ -85,6 +103,11 @@ export default async function LeaderboardPage() {
           Season Leaderboard
         </h1>
         <p className="text-fairway/50 italic">"If you pick him, points will come."</p>
+        {lastCompletedTournament && (
+          <p className="text-fairway/40 text-sm mt-3">
+            Results through <strong className="text-fairway/60 font-medium">{lastCompletedTournament.name}</strong>
+          </p>
+        )}
       </div>
 
       {leaderboard.length === 0 ? (

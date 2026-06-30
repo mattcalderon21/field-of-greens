@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 async function getResults() {
   const supabase = createClient()
 
-  const [{ data: profiles }, { data: tournaments }, { data: picks }] = await Promise.all([
+  const [{ data: profiles }, { data: tournaments }, { data: picks }, { data: winners }] = await Promise.all([
     supabase.from('profiles').select('id, display_name').order('display_name'),
     supabase
       .from('tournaments')
@@ -17,19 +17,30 @@ async function getResults() {
     supabase
       .from('picks')
       .select(`
-        user_id, tournament_id, pick_number, earnings, is_locked,
+        user_id, tournament_id, golfer_id, pick_number, earnings, is_locked,
         golfer:golfers(name)
       `),
+    supabase
+      .from('tournament_fields')
+      .select('tournament_id, golfer_id')
+      .eq('finish_position', '1'),
   ])
 
-  return { profiles: profiles ?? [], tournaments: tournaments ?? [], picks: picks ?? [] }
+  return { profiles: profiles ?? [], tournaments: tournaments ?? [], picks: picks ?? [], winners: winners ?? [] }
 }
 
 export default async function ResultsPage() {
-  const { profiles, tournaments, picks } = await getResults()
+  const { profiles, tournaments, picks, winners } = await getResults()
+
+  // Build winner lookup: tournament_id → Set of golfer_ids who won that week
+  const winnerMap: Record<number, Set<number>> = {}
+  for (const w of winners) {
+    if (!winnerMap[w.tournament_id]) winnerMap[w.tournament_id] = new Set()
+    winnerMap[w.tournament_id].add(w.golfer_id)
+  }
 
   // Build pick lookup: user_id → tournament_id → pick[]
-  const pickMap: Record<string, Record<number, Array<{ golfer: string; earnings: number; is_locked: boolean }>>> = {}
+  const pickMap: Record<string, Record<number, Array<{ golfer: string; earnings: number; is_locked: boolean; isWinner: boolean }>>> = {}
   for (const pick of picks) {
     if (!pickMap[pick.user_id]) pickMap[pick.user_id] = {}
     if (!pickMap[pick.user_id][pick.tournament_id]) pickMap[pick.user_id][pick.tournament_id] = []
@@ -37,7 +48,16 @@ export default async function ResultsPage() {
       golfer: (pick.golfer as unknown as { name: string } | null)?.name ?? '—',
       earnings: pick.earnings ?? 0,
       is_locked: pick.is_locked ?? false,
+      isWinner: winnerMap[pick.tournament_id]?.has(pick.golfer_id) ?? false,
     })
+  }
+
+  // Count tournament winners picked per contestant (for a season-long tally)
+  const winCounts: Record<string, number> = {}
+  for (const pick of picks) {
+    if (winnerMap[pick.tournament_id]?.has(pick.golfer_id)) {
+      winCounts[pick.user_id] = (winCounts[pick.user_id] ?? 0) + 1
+    }
   }
 
   // Compute totals per user
@@ -106,18 +126,28 @@ export default async function ResultsPage() {
                 {sortedProfiles.map((profile, rowIdx) => (
                   <tr key={profile.id} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-cream/40'}>
                     <td className={`px-4 py-3 font-semibold text-fairway sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-cream/40'}`}>
-                      {profile.display_name}
+                      <div>{profile.display_name}</div>
+                      {winCounts[profile.id] > 0 && (
+                        <div className="text-xs font-normal text-emerald-700 mt-0.5" title="Tournament winners picked this season">
+                          🏆 {winCounts[profile.id]}
+                        </div>
+                      )}
                     </td>
                     {relevantTournaments.map((t) => {
                       const pks = pickMap[profile.id]?.[t.id] ?? []
                       const cellEarnings = pks.reduce((s, p) => s + p.earnings, 0)
                       const isTopEarner = cellEarnings > 0 && cellEarnings === maxByTournament[t.id]
+                      const hasWinnerPick = pks.some((p) => p.isWinner)
 
                       return (
                         <td
                           key={t.id}
                           className={`px-2 py-2.5 text-center align-top ${
-                            isTopEarner ? 'bg-gold/10' : ''
+                            hasWinnerPick
+                              ? 'bg-emerald-50 ring-2 ring-inset ring-emerald-400'
+                              : isTopEarner
+                              ? 'bg-gold/10'
+                              : ''
                           }`}
                         >
                           {pks.length === 0 ? (
@@ -129,10 +159,14 @@ export default async function ResultsPage() {
                           ) : (
                             pks.map((pk, i) => (
                               <div key={i} className={`${i > 0 ? 'mt-1 pt-1 border-t border-cream-dark' : ''}`}>
-                                <div className="font-medium text-fairway text-xs leading-tight">{pk.golfer}</div>
+                                <div className={`font-medium text-xs leading-tight ${pk.isWinner ? 'text-emerald-700' : 'text-fairway'}`}>
+                                  {pk.golfer}
+                                </div>
                                 <div className={`earnings-num text-xs ${
                                   pk.earnings === 0
                                     ? 'text-fairway/30'
+                                    : pk.isWinner
+                                    ? 'text-emerald-700 font-semibold'
                                     : isTopEarner
                                     ? 'text-gold-dark font-semibold'
                                     : 'text-fairway'
@@ -142,9 +176,14 @@ export default async function ResultsPage() {
                                     : formatCurrency(pk.earnings)
                                   }
                                 </div>
-                                {isTopEarner && pk.earnings > 0 && (
-                                  <div className="text-gold text-xs">⭐</div>
-                                )}
+                                <div className="flex items-center justify-center gap-1">
+                                  {pk.isWinner && (
+                                    <span className="text-xs" title="Picked the tournament winner">🏆</span>
+                                  )}
+                                  {isTopEarner && pk.earnings > 0 && (
+                                    <span className="text-gold text-xs">⭐</span>
+                                  )}
+                                </div>
                               </div>
                             ))
                           )}
@@ -166,6 +205,7 @@ export default async function ResultsPage() {
         <div className="mt-4 flex flex-wrap gap-4 text-xs text-fairway/50">
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gold/10 border border-gold/30" /> Top earner that week</span>
           <span className="flex items-center gap-1"><span>⭐</span> Week high</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 ring-2 ring-inset ring-emerald-400" /> 🏆 Picked the tournament winner</span>
           <span className="flex items-center gap-1"><span className="text-fairway/25">—</span> No pick / missed deadline</span>
         </div>
       </div>

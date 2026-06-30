@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, getPurseDisplay, getTournamentStatus } from '@/lib/utils'
 import type { Tournament } from '@/lib/types'
@@ -29,13 +30,33 @@ function PurseRankBadge({ rank, purse }: { rank: number | null; purse: number | 
   )
 }
 
-export default async function SchedulePage() {
+async function getActiveTournament() {
   const supabase = createClient()
-  const { data: tournaments, error } = await supabase
+  const today = new Date().toISOString().split('T')[0]
+
+  // Find any tournament marked active OR whose dates span today
+  const { data } = await supabase
     .from('tournaments')
     .select('*')
     .eq('is_included_in_ond', true)
+    .eq('is_completed', false)
+    .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
     .order('start_date', { ascending: true })
+    .limit(1)
+    .single()
+  return data as Tournament | null
+}
+
+export default async function SchedulePage() {
+  const supabase = createClient()
+  const [{ data: tournaments, error }, activeTournament] = await Promise.all([
+    supabase
+      .from('tournaments')
+      .select('*')
+      .eq('is_included_in_ond', true)
+      .order('start_date', { ascending: true }),
+    getActiveTournament(),
+  ])
 
   if (error || !tournaments?.length) {
     return (
@@ -58,6 +79,19 @@ export default async function SchedulePage() {
           {completed} of {total} tournaments complete · Sony Open through BMW Championship
         </p>
       </div>
+
+      {/* Live now banner */}
+      {activeTournament && (
+        <div className="mb-8 flex items-center justify-between gap-3 flex-wrap bg-gold/10 border border-gold/30 rounded-xl px-5 py-3">
+          <div className="inline-flex items-center gap-2 text-gold text-sm">
+            <span className="w-2 h-2 rounded-full bg-gold animate-pulse" />
+            <span>Live now: <strong className="text-fairway">{activeTournament.name}</strong></span>
+          </div>
+          <Link href="/" className="text-sm text-gold font-medium hover:underline">
+            See this week&rsquo;s picks →
+          </Link>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="mb-8">
