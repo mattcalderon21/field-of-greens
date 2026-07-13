@@ -75,16 +75,9 @@ function TournamentsPanel() {
   }
 
   const toggleStatus = async (id: number, field: 'is_active' | 'is_completed', value: boolean) => {
-    // If setting is_active = true, first clear all other active tournaments
-    if (field === 'is_active' && value) {
-      await supabase.from('tournaments').update({ is_active: false }).neq('id', id)
-    }
     const { error } = await supabase.from('tournaments').update({ [field]: value }).eq('id', id)
     if (!error) {
-      setTournaments((prev) => prev.map((t) => {
-        if (field === 'is_active' && value) return t.id === id ? { ...t, is_active: true } : { ...t, is_active: false }
-        return t.id === id ? { ...t, [field]: value } : t
-      }))
+      setTournaments((prev) => prev.map((t) => t.id === id ? { ...t, [field]: value } : t))
     }
   }
 
@@ -725,16 +718,26 @@ function ResultsPanel() {
 function PicksPanel() {
   const supabase = createClient()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [profiles, setProfiles] = useState<{ id: string; display_name: string }[]>([])
   const [selectedTournament, setSelectedTournament] = useState<number | null>(null)
   const [picks, setPicks] = useState<Pick[]>([])
   const [loading, setLoading] = useState(false)
   const [editPickId, setEditPickId] = useState<number | null>(null)
   const [editGolferId, setEditGolferId] = useState<number | ''>('')
   const [fieldGolfers, setFieldGolfers] = useState<{ golfer_id: number; name: string; earnings: number | null }[]>([])
+  const [addUserId, setAddUserId] = useState<string>('')
+  const [addGolferId, setAddGolferId] = useState<number | ''>('')
+  const [addMsg, setAddMsg] = useState<string | null>(null)
+  const [addingPick, setAddingPick] = useState(false)
 
   useEffect(() => {
-    supabase.from('tournaments').select('*').order('start_date', { ascending: false })
-      .then(({ data }) => setTournaments(data ?? []))
+    Promise.all([
+      supabase.from('tournaments').select('*').order('start_date', { ascending: false }),
+      supabase.from('profiles').select('id, display_name').order('display_name'),
+    ]).then(([{ data: t }, { data: p }]) => {
+      setTournaments(t ?? [])
+      setProfiles(p ?? [])
+    })
   }, [supabase])
 
   const loadPicks = async (tid: number) => {
@@ -779,6 +782,46 @@ function PicksPanel() {
     if (selectedTournament) await loadPicks(selectedTournament)
   }
 
+  const addPick = async () => {
+    if (!selectedTournament || !addUserId || !addGolferId) return
+    setAddingPick(true)
+    setAddMsg(null)
+
+    // Next pick_number for this user in this tournament
+    const existingUserPicks = picks.filter((p) => p.user_id === addUserId)
+    const pickNumber = existingUserPicks.length + 1
+
+    // Carry forward earnings if results already entered
+    const tf = fieldGolfers.find((g) => g.golfer_id === Number(addGolferId))
+    const earnings = tf?.earnings ?? 0
+
+    const { error } = await supabase.from('picks').upsert({
+      user_id: addUserId,
+      tournament_id: selectedTournament,
+      golfer_id: Number(addGolferId),
+      pick_number: pickNumber,
+      earnings: earnings,
+      is_locked: false,
+      submitted_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,tournament_id,pick_number' })
+
+    if (error) {
+      setAddMsg(`Error: ${error.message}`)
+    } else {
+      setAddMsg('Pick added!')
+      setAddUserId('')
+      setAddGolferId('')
+      await loadPicks(selectedTournament)
+    }
+    setAddingPick(false)
+  }
+
+  const deletePick = async (pickId: number) => {
+    if (!confirm('Delete this pick? This cannot be undone.')) return
+    await supabase.from('picks').delete().eq('id', pickId)
+    if (selectedTournament) await loadPicks(selectedTournament)
+  }
+
   return (
     <div>
       <h2 className="font-display text-xl font-bold text-fairway mb-4">Picks Overview</h2>
@@ -799,6 +842,48 @@ function PicksPanel() {
 
       {loading && <div className="text-fairway/50 text-center py-4">Loading…</div>}
 
+      {/* Add Pick */}
+      {!loading && selectedTournament !== null && (
+        <div className="card mb-4">
+          <h3 className="font-semibold text-fairway mb-3">Add Pick for Contestant</h3>
+          <div className="flex flex-wrap gap-3">
+            <select
+              className="input flex-1 min-w-40"
+              value={addUserId}
+              onChange={(e) => setAddUserId(e.target.value)}
+            >
+              <option value="">— Select contestant —</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </select>
+            <select
+              className="input flex-1 min-w-40"
+              value={addGolferId}
+              onChange={(e) => setAddGolferId(Number(e.target.value) || '')}
+            >
+              <option value="">— Select golfer —</option>
+              {fieldGolfers.map((g) => (
+                <option key={g.golfer_id} value={g.golfer_id}>{g.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={addPick}
+              disabled={addingPick || !addUserId || !addGolferId}
+              className="btn-primary text-sm"
+            >
+              {addingPick ? 'Adding…' : 'Add Pick'}
+            </button>
+          </div>
+          {addMsg && (
+            <p className={`text-sm mt-2 ${addMsg.startsWith('Error') ? 'text-red-600' : 'text-gold'}`}>{addMsg}</p>
+          )}
+          {fieldGolfers.length === 0 && (
+            <p className="text-xs text-fairway/40 mt-2">Load a tournament field first (Fields tab) to enable golfer selection.</p>
+          )}
+        </div>
+      )}
+
       {!loading && picks.length > 0 && (
         <div className="card p-0 overflow-hidden">
           <table className="w-full text-sm">
@@ -808,7 +893,7 @@ function PicksPanel() {
                 <th className="px-4 py-2.5 text-left font-medium">Golfer</th>
                 <th className="px-4 py-2.5 text-right font-medium">Earnings</th>
                 <th className="px-4 py-2.5 text-center font-medium">Locked</th>
-                <th className="px-4 py-2.5 text-center font-medium">Action</th>
+                <th className="px-4 py-2.5 text-center font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-dark">
@@ -869,6 +954,10 @@ function PicksPanel() {
                             onClick={() => lockPick(pick.id, !pick.is_locked)}
                             className="text-xs border border-cream-darker px-2 py-1 rounded hover:bg-cream-dark transition-colors"
                           >{pick.is_locked ? 'Unlock' : 'Lock'}</button>
+                          <button
+                            onClick={() => deletePick(pick.id)}
+                            className="text-xs border border-red-200 text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                          >Delete</button>
                         </div>
                       )}
                     </td>

@@ -30,11 +30,10 @@ function PurseRankBadge({ rank, purse }: { rank: number | null; purse: number | 
   )
 }
 
-async function getActiveTournament() {
+async function getActiveTournaments() {
   const supabase = createClient()
   const today = new Date().toISOString().split('T')[0]
 
-  // Find any tournament marked active OR whose dates span today
   const { data } = await supabase
     .from('tournaments')
     .select('*')
@@ -42,20 +41,18 @@ async function getActiveTournament() {
     .eq('is_completed', false)
     .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
     .order('start_date', { ascending: true })
-    .limit(1)
-    .single()
-  return data as Tournament | null
+  return (data ?? []) as Tournament[]
 }
 
 export default async function SchedulePage() {
   const supabase = createClient()
-  const [{ data: tournaments, error }, activeTournament] = await Promise.all([
+  const [{ data: tournaments, error }, activeTournaments] = await Promise.all([
     supabase
       .from('tournaments')
       .select('*')
       .eq('is_included_in_ond', true)
       .order('start_date', { ascending: true }),
-    getActiveTournament(),
+    getActiveTournaments(),
   ])
 
   if (error || !tournaments?.length) {
@@ -81,11 +78,19 @@ export default async function SchedulePage() {
       </div>
 
       {/* Live now banner */}
-      {activeTournament && (
+      {activeTournaments.length > 0 && (
         <div className="mb-8 flex items-center justify-between gap-3 flex-wrap bg-gold/10 border border-gold/30 rounded-xl px-5 py-3">
           <div className="inline-flex items-center gap-2 text-gold text-sm">
             <span className="w-2 h-2 rounded-full bg-gold animate-pulse" />
-            <span>Live now: <strong className="text-fairway">{activeTournament.name}</strong></span>
+            <span>
+              Live now:{' '}
+              {activeTournaments.map((t, i) => (
+                <span key={t.id}>
+                  {i > 0 && <span className="text-gold/60"> · </span>}
+                  <strong className="text-fairway">{t.name}</strong>
+                </span>
+              ))}
+            </span>
           </div>
           <Link href="/" className="text-sm text-gold font-medium hover:underline">
             See this week&rsquo;s picks →
