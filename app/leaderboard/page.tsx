@@ -61,7 +61,7 @@ async function getLeaderboard() {
   if (latestStartDate) {
     const latestMs = new Date(latestStartDate).getTime()
     for (const [tid, { start_date }] of completedEntries) {
-      if ((latestMs - new Date(start_date).getTime()) / 86_400_000 <= 7) {
+      if ((latestMs - new Date(start_date).getTime()) / 86_400_000 <= 3) {
         lastWeekIds.add(tid)
       }
     }
