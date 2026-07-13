@@ -4,21 +4,27 @@ import { formatCurrency } from '@/lib/utils'
 export const metadata = { title: 'Leaderboard — The Field of Greens' }
 export const dynamic = 'force-dynamic'
 
+type LastPickEntry = {
+  golfer: string
+  earnings: number
+  tournament: string
+  finish_position: string | null
+}
+
 async function getLeaderboard() {
   const supabase = createClient()
 
-  // Get all profiles
   const { data: profiles } = await supabase
     .from('profiles')
     .select('id, display_name, email')
 
   if (!profiles?.length) return []
 
-  // Get all picks with golfer + tournament info
+  // golfer_id needed for finish_position lookup below
   const { data: picks } = await supabase
     .from('picks')
     .select(`
-      user_id, earnings, tournament_id, pick_number,
+      user_id, earnings, tournament_id, pick_number, golfer_id,
       golfer:golfers(name),
       tournament:tournaments(name, is_completed, start_date)
     `)
@@ -27,30 +33,68 @@ async function getLeaderboard() {
   if (!picks) return profiles.map((p) => ({
     ...p,
     total_earnings: 0,
-    last_pick: null,
+    last_picks: [] as LastPickEntry[],
     gap: 0,
     rank: 0,
   }))
 
-  // Compute totals and last pick per user
-  const dataByUser: Record<string, {
-    total: number
-    lastPick: { golfer: string; earnings: number; tournament: string } | null
-  }> = {}
+  // Build a map of completed tournament metadata keyed by tournament_id
+  const completedTournamentMeta = new Map<number, { name: string; start_date: string }>()
+  for (const p of picks) {
+    const t = p.tournament as unknown as { name: string; is_completed: boolean; start_date: string } | null
+    if (t?.is_completed && !completedTournamentMeta.has(p.tournament_id)) {
+      completedTournamentMeta.set(p.tournament_id, { name: t.name, start_date: t.start_date })
+    }
+  }
+
+  // Identify "last week": the most recent completed start_date, plus any other
+  // completed tournament whose start_date falls within 7 days of it (handles
+  // concurrent events like Scottish Open + ISCO Championship).
+  const completedEntries = Array.from(completedTournamentMeta.entries())
+
+  let latestStartDate: string | null = null
+  for (const [, { start_date }] of completedEntries) {
+    if (!latestStartDate || start_date > latestStartDate) latestStartDate = start_date
+  }
+
+  const lastWeekIds = new Set<number>()
+  if (latestStartDate) {
+    const latestMs = new Date(latestStartDate).getTime()
+    for (const [tid, { start_date }] of completedEntries) {
+      if ((latestMs - new Date(start_date).getTime()) / 86_400_000 <= 7) {
+        lastWeekIds.add(tid)
+      }
+    }
+  }
+
+  // Fetch finish positions from tournament_fields for last-week tournaments
+  const finishMap = new Map<string, string | null>()
+  if (lastWeekIds.size > 0) {
+    const { data: fields } = await supabase
+      .from('tournament_fields')
+      .select('tournament_id, golfer_id, finish_position')
+      .in('tournament_id', Array.from(lastWeekIds))
+    for (const f of fields ?? []) {
+      finishMap.set(`${f.tournament_id}_${f.golfer_id}`, f.finish_position ?? null)
+    }
+  }
+
+  // Accumulate per-user totals and last-week picks
+  const dataByUser: Record<string, { total: number; lastPicks: LastPickEntry[] }> = {}
 
   for (const p of picks) {
-    if (!dataByUser[p.user_id]) {
-      dataByUser[p.user_id] = { total: 0, lastPick: null }
-    }
+    if (!dataByUser[p.user_id]) dataByUser[p.user_id] = { total: 0, lastPicks: [] }
     dataByUser[p.user_id].total += p.earnings ?? 0
 
-    // Track last pick from completed tournament
-    const tournament = p.tournament as unknown as { name: string; is_completed: boolean; start_date: string } | null
-    if (tournament?.is_completed && !dataByUser[p.user_id].lastPick) {
-      dataByUser[p.user_id].lastPick = {
-        golfer: (p.golfer as unknown as { name: string } | null)?.name ?? '—',
-        earnings: p.earnings ?? 0,
-        tournament: tournament.name,
+    if (lastWeekIds.has(p.tournament_id)) {
+      const meta = completedTournamentMeta.get(p.tournament_id)
+      if (meta) {
+        dataByUser[p.user_id].lastPicks.push({
+          golfer: (p.golfer as unknown as { name: string } | null)?.name ?? '—',
+          earnings: p.earnings ?? 0,
+          tournament: meta.name,
+          finish_position: finishMap.get(`${p.tournament_id}_${p.golfer_id}`) ?? null,
+        })
       }
     }
   }
@@ -59,7 +103,7 @@ async function getLeaderboard() {
     .map((profile) => ({
       ...profile,
       total_earnings: dataByUser[profile.id]?.total ?? 0,
-      last_pick: dataByUser[profile.id]?.lastPick ?? null,
+      last_picks: dataByUser[profile.id]?.lastPicks ?? [],
     }))
     .sort((a, b) => b.total_earnings - a.total_earnings)
     .map((entry, idx, arr) => ({
@@ -182,7 +226,7 @@ export default async function LeaderboardPage() {
                   <th className="px-4 py-3 text-left font-medium">Contestant</th>
                   <th className="px-4 py-3 text-right font-medium earnings-num">Total</th>
                   <th className="px-4 py-3 text-right font-medium earnings-num hidden sm:table-cell">Gap</th>
-                  <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Last Pick</th>
+                  <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Last Week</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cream-dark">
@@ -216,12 +260,26 @@ export default async function LeaderboardPage() {
                         : `-${formatCurrency(entry.gap)}`}
                     </td>
                     <td className="px-4 py-3.5 text-sm text-fairway/60 hidden md:table-cell">
-                      {entry.last_pick ? (
-                        <div>
-                          <span className="font-medium text-fairway">{entry.last_pick.golfer}</span>
-                          <span className="text-fairway/40 ml-2 earnings-num">
-                            {formatCurrency(entry.last_pick.earnings)}
-                          </span>
+                      {entry.last_picks.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {entry.last_picks.map((lp, i) => (
+                            <div key={i} className="leading-tight">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium text-fairway">{lp.golfer}</span>
+                                {lp.finish_position && (
+                                  <span className="text-xs font-mono bg-fairway/8 text-fairway/70 px-1.5 py-0.5 rounded">
+                                    {lp.finish_position}
+                                  </span>
+                                )}
+                                <span className="text-fairway/40 earnings-num text-xs">
+                                  {formatCurrency(lp.earnings)}
+                                </span>
+                              </div>
+                              {entry.last_picks.length > 1 && (
+                                <div className="text-fairway/35 text-xs mt-0.5">{lp.tournament}</div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <span className="text-fairway/30">—</span>
