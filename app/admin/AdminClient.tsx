@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import type { Tournament, Golfer, Profile, Pick, TournamentField } from '@/lib/types'
+import type { Tournament, Golfer, Profile, Pick, TournamentField, Season } from '@/lib/types'
 
-type Tab = 'tournaments' | 'fields' | 'results' | 'picks' | 'users'
+type Tab = 'seasons' | 'tournaments' | 'fields' | 'results' | 'picks' | 'users'
 
 // Shared helper — normalizes various copy-paste name formats to "First Last"
 function normalizeName(raw: string): string {
@@ -29,6 +29,8 @@ function normalizeName(raw: string): string {
 function TournamentsPanel() {
   const supabase = createClient()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all'>('all')
   const [loading, setLoading] = useState(true)
   const [editId, setEditId] = useState<number | null>(null)
   const [editData, setEditData] = useState<Partial<Tournament>>({})
@@ -36,14 +38,16 @@ function TournamentsPanel() {
   const [msg, setMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase
-      .from('tournaments')
-      .select('*')
-      .order('start_date', { ascending: true })
-      .then(({ data }) => {
-        setTournaments(data ?? [])
-        setLoading(false)
-      })
+    Promise.all([
+      supabase.from('tournaments').select('*').order('start_date', { ascending: true }),
+      supabase.from('seasons').select('*').order('year', { ascending: false }),
+    ]).then(([{ data: tData }, { data: sData }]) => {
+      setTournaments(tData ?? [])
+      setSeasons(sData ?? [])
+      const current = (sData ?? []).find((s: Season) => s.is_current)
+      if (current) setSeasonFilter(current.id)
+      setLoading(false)
+    })
   }, [supabase])
 
   const startEdit = (t: Tournament) => {
@@ -85,13 +89,27 @@ function TournamentsPanel() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
         <h2 className="font-display text-xl font-bold text-fairway">Tournament Management</h2>
-        {msg && <span className="text-sm text-gold">{msg}</span>}
+        <div className="flex items-center gap-3">
+          {seasons.length > 1 && (
+            <select
+              className="input text-sm py-1.5"
+              value={seasonFilter}
+              onChange={(e) => setSeasonFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))}
+            >
+              <option value="all">All seasons</option>
+              {seasons.map((s) => (
+                <option key={s.id} value={s.id}>{s.year}</option>
+              ))}
+            </select>
+          )}
+          {msg && <span className="text-sm text-gold">{msg}</span>}
+        </div>
       </div>
 
       <div className="space-y-2">
-        {tournaments.map((t) => (
+        {tournaments.filter((t) => seasonFilter === 'all' || t.season_id === seasonFilter).map((t) => (
           <div key={t.id} className={`rounded-xl border p-4 ${t.is_active ? 'border-gold/40 bg-gold/5' : 'border-cream-dark bg-white'}`}>
             {editId === t.id ? (
               <div className="space-y-3">
@@ -983,12 +1001,22 @@ function PicksPanel() {
 function UsersPanel() {
   const supabase = createClient()
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [burnedSeasonId, setBurnedSeasonId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.from('profiles').select('*').order('display_name')
-      .then(({ data }) => { setProfiles(data ?? []); setLoading(false) })
+    Promise.all([
+      supabase.from('profiles').select('*').order('display_name'),
+      supabase.from('seasons').select('*').order('year', { ascending: false }),
+    ]).then(([{ data: pData }, { data: sData }]) => {
+      setProfiles(pData ?? [])
+      setSeasons(sData ?? [])
+      const current = (sData ?? []).find((s: Season) => s.is_current)
+      if (current) setBurnedSeasonId(current.id)
+      setLoading(false)
+    })
   }, [supabase])
 
   const toggleAdmin = async (id: string, current: boolean) => {
@@ -1001,11 +1029,25 @@ function UsersPanel() {
 
   const [burnedForUser, setBurnedForUser] = useState<{ userId: string; golfers: string[] } | null>(null)
 
-  const viewBurned = async (userId: string, name: string) => {
-    const { data } = await supabase
+  const viewBurned = async (userId: string) => {
+    let query = supabase
       .from('picks')
-      .select('golfer:golfers(name)')
+      .select('golfer:golfers(name), tournament:tournaments(season_id)')
       .eq('user_id', userId)
+
+    if (burnedSeasonId !== null) {
+      // Filter via join: only picks from tournaments in the selected season
+      const { data: tids } = await supabase
+        .from('tournaments')
+        .select('id')
+        .eq('season_id', burnedSeasonId)
+      const ids = (tids ?? []).map((t: { id: number }) => t.id)
+      if (ids.length > 0) {
+        query = query.in('tournament_id', ids) as typeof query
+      }
+    }
+
+    const { data } = await query
     const names = (data ?? []).map((p) => (p.golfer as unknown as { name: string } | null)?.name ?? '—')
     setBurnedForUser({ userId, golfers: names })
   }
@@ -1014,9 +1056,26 @@ function UsersPanel() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
         <h2 className="font-display text-xl font-bold text-fairway">Users & Contestants</h2>
-        {msg && <span className="text-sm text-gold">{msg}</span>}
+        <div className="flex items-center gap-3">
+          {seasons.length > 1 && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-fairway/50">Burned golfers:</span>
+              <select
+                className="input text-sm py-1.5"
+                value={burnedSeasonId ?? ''}
+                onChange={(e) => { setBurnedSeasonId(e.target.value ? parseInt(e.target.value, 10) : null); setBurnedForUser(null) }}
+              >
+                <option value="">All time</option>
+                {seasons.map((s) => (
+                  <option key={s.id} value={s.id}>{s.year}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {msg && <span className="text-sm text-gold">{msg}</span>}
+        </div>
       </div>
 
       <div className="card p-0 overflow-hidden mb-6">
@@ -1048,7 +1107,7 @@ function UsersPanel() {
                 </td>
                 <td className="px-4 py-3 text-center">
                   <button
-                    onClick={() => viewBurned(p.id, p.display_name)}
+                    onClick={() => viewBurned(p.id)}
                     className="text-xs text-gold hover:underline"
                   >
                     View burned
@@ -1079,6 +1138,149 @@ function UsersPanel() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Seasons Management ────────────────────────────────────────────────────
+
+function SeasonsPanel() {
+  const supabase = createClient()
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [loading, setLoading] = useState(true)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // New season form state
+  const [newYear, setNewYear] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newStart, setNewStart] = useState('')
+  const [newEnd, setNewEnd] = useState('')
+  const [newTotal, setNewTotal] = useState('36')
+
+  useEffect(() => {
+    supabase.from('seasons').select('*').order('year', { ascending: false })
+      .then(({ data }) => { setSeasons(data ?? []); setLoading(false) })
+  }, [supabase])
+
+  const createSeason = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setMsg(null)
+    const { data, error } = await supabase
+      .from('seasons')
+      .insert({
+        year: parseInt(newYear, 10),
+        name: newName,
+        start_date: newStart,
+        end_date: newEnd,
+        total_tournaments: parseInt(newTotal, 10),
+        is_current: false,
+      })
+      .select()
+      .single()
+    if (error) {
+      setMsg(`Error: ${error.message}`)
+    } else {
+      setSeasons((prev) => [data as Season, ...prev])
+      setNewYear(''); setNewName(''); setNewStart(''); setNewEnd(''); setNewTotal('36')
+      setMsg('Season created.')
+    }
+    setSaving(false)
+  }
+
+  const setCurrentSeason = async (id: number) => {
+    setSaving(true)
+    const { error } = await supabase.rpc('set_current_season', { p_season_id: id })
+    if (error) {
+      setMsg(`Error: ${error.message}`)
+    } else {
+      setSeasons((prev) => prev.map((s) => ({ ...s, is_current: s.id === id })))
+      setMsg('Current season updated.')
+    }
+    setSaving(false)
+  }
+
+  if (loading) return <div className="text-fairway/50 text-center py-8">Loading…</div>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-xl font-bold text-fairway">Seasons</h2>
+        {msg && <span className="text-sm text-gold">{msg}</span>}
+      </div>
+
+      <div className="card p-0 overflow-hidden mb-8">
+        <table className="w-full text-sm">
+          <thead className="bg-fairway text-cream">
+            <tr>
+              <th className="px-4 py-2.5 text-left font-medium">Year</th>
+              <th className="px-4 py-2.5 text-left font-medium">Name</th>
+              <th className="px-4 py-2.5 text-center font-medium">Tournaments</th>
+              <th className="px-4 py-2.5 text-center font-medium">Status</th>
+              <th className="px-4 py-2.5 text-center font-medium">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-cream-dark">
+            {seasons.map((s) => (
+              <tr key={s.id}>
+                <td className="px-4 py-3 font-bold text-fairway">{s.year}</td>
+                <td className="px-4 py-3 text-fairway/80">{s.name}</td>
+                <td className="px-4 py-3 text-center text-fairway/60">{s.total_tournaments}</td>
+                <td className="px-4 py-3 text-center">
+                  {s.is_current ? (
+                    <span className="text-xs bg-gold/20 text-gold-dark px-2 py-0.5 rounded-full font-medium">Current</span>
+                  ) : (
+                    <span className="text-xs text-fairway/40">Past</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {!s.is_current && (
+                    <button
+                      onClick={() => setCurrentSeason(s.id)}
+                      disabled={saving}
+                      className="text-xs text-gold hover:underline disabled:opacity-50"
+                    >
+                      Set as Current
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <h3 className="font-semibold text-fairway mb-4">Create New Season</h3>
+        <form onSubmit={createSeason} className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Year</label>
+            <input className="input" type="number" placeholder="2027" value={newYear} onChange={(e) => setNewYear(e.target.value)} required />
+          </div>
+          <div>
+            <label className="label">Season Name</label>
+            <input className="input" placeholder="2027 One-and-Done Season" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+          </div>
+          <div>
+            <label className="label">Start Date</label>
+            <input className="input" type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} required />
+          </div>
+          <div>
+            <label className="label">End Date</label>
+            <input className="input" type="date" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} required />
+          </div>
+          <div>
+            <label className="label">Total Tournaments</label>
+            <input className="input" type="number" min={1} value={newTotal} onChange={(e) => setNewTotal(e.target.value)} required />
+          </div>
+          <div className="flex items-end">
+            <button type="submit" disabled={saving} className="btn-primary text-sm w-full">
+              {saving ? 'Creating…' : 'Create Season'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -1173,6 +1375,7 @@ export default function AdminClient() {
   const [tab, setTab] = useState<Tab>('tournaments')
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: 'seasons', label: 'Seasons', icon: '📆' },
     { key: 'tournaments', label: 'Tournaments', icon: '📅' },
     { key: 'fields', label: 'Fields', icon: '🏌️' },
     { key: 'results', label: 'Results', icon: '📊' },
@@ -1206,6 +1409,7 @@ export default function AdminClient() {
       </div>
 
       {/* Panel content */}
+      {tab === 'seasons' && <SeasonsPanel />}
       {tab === 'tournaments' && <TournamentsPanel />}
       {tab === 'fields' && <FieldPanel />}
       {tab === 'results' && <ResultsPanel />}

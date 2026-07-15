@@ -82,7 +82,3 @@ export function getPurseDisplay(purse: number | null): string {
   if (purse === null || purse === 0) return 'TBD'
   return formatCurrency(purse)
 }
-
-export const SEASON_START = '2026-01-15'
-export const SEASON_END = '2026-08-20'
-export const TOTAL_TOURNAMENTS = 36

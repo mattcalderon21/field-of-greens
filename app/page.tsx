@@ -2,10 +2,11 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
+import { getCurrentSeason, getSeasonTournamentIds } from '@/lib/seasons'
 
 export const dynamic = 'force-dynamic'
 
-async function getLeaderboardPreview() {
+async function getLeaderboardPreview(tournamentIds: number[]) {
   const supabase = createClient()
 
   const { data: profiles } = await supabase
@@ -14,9 +15,12 @@ async function getLeaderboardPreview() {
 
   if (!profiles?.length) return []
 
+  if (tournamentIds.length === 0) return profiles.map((p) => ({ ...p, total: 0 })).slice(0, 5)
+
   const { data: picks } = await supabase
     .from('picks')
     .select('user_id, earnings, tournament_id')
+    .in('tournament_id', tournamentIds)
 
   if (!picks) return []
 
@@ -74,13 +78,14 @@ async function getCurrentWeekPicks(tournamentId: number, isCompleted: boolean) {
   return rows
 }
 
-async function getActiveTournaments() {
+async function getActiveTournaments(seasonId: number) {
   const supabase = createClient()
   const today = new Date().toISOString().split('T')[0]
 
   const { data } = await supabase
     .from('tournaments')
     .select('*')
+    .eq('season_id', seasonId)
     .eq('is_included_in_ond', true)
     .eq('is_completed', false)
     .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
@@ -108,9 +113,12 @@ export default async function LandingPage({
     redirect(`/login?error=${encodeURIComponent(code)}`)
   }
 
+  const currentSeason = await getCurrentSeason()
+  const seasonTournamentIds = currentSeason ? await getSeasonTournamentIds(currentSeason.id) : []
+
   const [leaderboard, activeTournaments] = await Promise.all([
-    getLeaderboardPreview(),
-    getActiveTournaments(),
+    getLeaderboardPreview(seasonTournamentIds),
+    currentSeason ? getActiveTournaments(currentSeason.id) : Promise.resolve([]),
   ])
 
   const weekPicksByTournament = await Promise.all(
@@ -133,7 +141,7 @@ export default async function LandingPage({
         <div className="relative max-w-5xl mx-auto px-4 py-24 text-center">
           <div className="inline-flex items-center gap-2 bg-gold/10 border border-gold/30 text-gold text-sm font-medium px-4 py-1.5 rounded-full mb-6">
             <span>⛳</span>
-            <span>2026 One-and-Done Season · Jan 15 – Aug 20</span>
+            <span>{currentSeason ? `${currentSeason.year} One-and-Done Season` : 'One-and-Done Season'}</span>
           </div>
 
           <h1 className="font-display text-5xl sm:text-7xl font-bold text-cream leading-tight mb-4">
@@ -235,8 +243,8 @@ export default async function LandingPage({
           </div>
 
           <div className="mt-6 p-5 bg-fairway rounded-xl text-cream">
-            <p className="font-display text-lg font-semibold mb-1">2026 Season</p>
-            <p className="text-cream/70 text-sm">36 tournaments · Sony Open through BMW Championship</p>
+            <p className="font-display text-lg font-semibold mb-1">{currentSeason ? `${currentSeason.year} Season` : 'Current Season'}</p>
+            <p className="text-cream/70 text-sm">{currentSeason ? `${currentSeason.total_tournaments} tournaments` : '36 tournaments'} · Sony Open through BMW Championship</p>
             <p className="text-cream/70 text-sm mt-1">Midwest bragging rights on the line. 🌽</p>
             <Link href="/schedule" className="inline-block mt-4 text-gold text-sm font-medium hover:underline">
               View full schedule →

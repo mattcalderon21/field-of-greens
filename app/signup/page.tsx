@@ -78,7 +78,7 @@ export default function SignupPage() {
             <span className="text-4xl">⛳</span>
             <h1 className="font-display text-3xl font-bold text-fairway mt-2">The Field of Greens</h1>
           </Link>
-          <p className="text-fairway/60 mt-2">Join the 2026 One-and-Done contest</p>
+          <p className="text-fairway/60 mt-2">Join the {process.env.NEXT_PUBLIC_CURRENT_YEAR ?? '2026'} One-and-Done contest</p>
         </div>
 
         {/* Setup warning — shown when the placeholder Supabase URL is still in place */}

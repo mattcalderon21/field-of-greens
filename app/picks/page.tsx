@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { getCurrentSeason, getSeasonTournamentIds } from '@/lib/seasons'
 import PicksClient from './PicksClient'
 
 export const metadata = { title: 'My Pick — The Field of Greens' }
@@ -27,6 +28,10 @@ export default async function PicksPage() {
     })
   }
 
+  // Get current season tournament IDs for burned-golfer scoping
+  const currentSeason = await getCurrentSeason()
+  const seasonTournamentIds = currentSeason ? await getSeasonTournamentIds(currentSeason.id) : []
+
   // Get active tournaments — either flagged is_active, or currently in-progress by date
   const today = new Date().toISOString().split('T')[0]
   const { data: activeTournaments } = await supabase
@@ -37,11 +42,15 @@ export default async function PicksPage() {
     .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
     .order('start_date', { ascending: true })
 
-  // Get all burned golfer IDs for this user (any pick this season = burned)
-  const { data: allPicks } = await supabase
+  // Get burned golfer IDs for this user scoped to the current season only
+  const burnedQuery = supabase
     .from('picks')
     .select('golfer_id, tournament_id')
     .eq('user_id', user.id)
+
+  const { data: allPicks } = seasonTournamentIds.length > 0
+    ? await burnedQuery.in('tournament_id', seasonTournamentIds)
+    : await burnedQuery
 
   const burnedGolferIds = new Set((allPicks ?? []).map((p) => p.golfer_id))
 
@@ -51,6 +60,7 @@ export default async function PicksPage() {
       profile={profile ?? { id: user.id, display_name: user.email ?? 'Unknown', email: user.email, is_admin: false, created_at: '' }}
       activeTournaments={activeTournaments ?? []}
       burnedGolferIds={Array.from(burnedGolferIds)}
+      seasonTournamentIds={seasonTournamentIds}
     />
   )
 }

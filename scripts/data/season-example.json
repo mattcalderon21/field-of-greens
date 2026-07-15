@@ -1,0 +1,39 @@
+{
+  "season": {
+    "year": 2025,
+    "name": "2025 One-and-Done Season",
+    "start_date": "2025-01-16",
+    "end_date": "2025-08-17",
+    "total_tournaments": 36
+  },
+  "picks": [
+    {
+      "contestant": "Matt",
+      "tournament_name": "Sony Open in Hawaii",
+      "tournament_start_date": "2025-01-16",
+      "tournament_end_date": "2025-01-19",
+      "tournament_course": "Waialae Country Club",
+      "tournament_location": "Honolulu, HI",
+      "tournament_purse": 8400000,
+      "golfer_name": "Scottie Scheffler",
+      "earnings": 1512000,
+      "finish_position": "1"
+    },
+    {
+      "contestant": "Ben",
+      "tournament_name": "Sony Open in Hawaii",
+      "tournament_start_date": "2025-01-16",
+      "golfer_name": "Xander Schauffele",
+      "earnings": 672000,
+      "finish_position": "T5"
+    },
+    {
+      "contestant": "Todd",
+      "tournament_name": "Sony Open in Hawaii",
+      "tournament_start_date": "2025-01-16",
+      "golfer_name": "Tony Finau",
+      "earnings": 0,
+      "finish_position": "CUT"
+    }
+  ]
+}

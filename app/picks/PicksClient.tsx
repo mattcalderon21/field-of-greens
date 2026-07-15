@@ -10,6 +10,7 @@ type Props = {
   profile: Profile
   activeTournaments: Tournament[]
   burnedGolferIds: number[]
+  seasonTournamentIds: number[]
 }
 
 type TournamentPickState = {
@@ -212,7 +213,7 @@ function BurnedList({ burnedGolferIds, allGolfers }: { burnedGolferIds: number[]
   )
 }
 
-export default function PicksClient({ userId, profile, activeTournaments, burnedGolferIds: initialBurned }: Props) {
+export default function PicksClient({ userId, profile, activeTournaments, burnedGolferIds: initialBurned, seasonTournamentIds }: Props) {
   const supabase = createClient()
   const [burnedGolferIds, setBurnedGolferIds] = useState<number[]>(initialBurned)
   const [tournamentStates, setTournamentStates] = useState<Record<number, TournamentPickState>>({})
@@ -378,11 +379,14 @@ export default function PicksClient({ userId, profile, activeTournaments, burned
       }
     }
 
-    // Refresh burned list and picks
-    const { data: allPicks } = await supabase
+    // Refresh burned list scoped to current season
+    const burnedQuery = supabase
       .from('picks')
       .select('golfer_id')
       .eq('user_id', userId)
+    const { data: allPicks } = seasonTournamentIds.length > 0
+      ? await burnedQuery.in('tournament_id', seasonTournamentIds)
+      : await burnedQuery
 
     setBurnedGolferIds((allPicks ?? []).map((p) => p.golfer_id))
     await loadTournamentData(tournamentId, numSlots)

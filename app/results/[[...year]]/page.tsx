@@ -1,36 +1,67 @@
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { resolveSeasonParam, getAllSeasons, getSeasonTournamentIds } from '@/lib/seasons'
+import SeasonNav from '@/components/SeasonNav'
 
-export const metadata = { title: 'Results — The Field of Greens' }
 export const dynamic = 'force-dynamic'
 
-async function getResults() {
+export async function generateMetadata({ params }: Props) {
+  const year = params.year?.[0] ?? null
+  return { title: year ? `${year} Results — The Field of Greens` : 'Results — The Field of Greens' }
+}
+
+type Props = { params: { year?: string[] } }
+
+async function getResults(tournamentIds: number[]) {
   const supabase = createClient()
+
+  if (tournamentIds.length === 0) {
+    const { data: profiles } = await supabase.from('profiles').select('id, display_name').order('display_name')
+    return { profiles: profiles ?? [], tournaments: [], picks: [], winners: [] }
+  }
 
   const [{ data: profiles }, { data: tournaments }, { data: picks }, { data: winners }] = await Promise.all([
     supabase.from('profiles').select('id, display_name').order('display_name'),
     supabase
       .from('tournaments')
       .select('id, name, start_date, is_active, is_completed, is_included_in_ond, purse')
-      .eq('is_included_in_ond', true)
+      .in('id', tournamentIds)
       .order('start_date', { ascending: true }),
     supabase
       .from('picks')
       .select(`
         user_id, tournament_id, golfer_id, pick_number, earnings, is_locked,
         golfer:golfers(name)
-      `),
+      `)
+      .in('tournament_id', tournamentIds),
     supabase
       .from('tournament_fields')
       .select('tournament_id, golfer_id')
+      .in('tournament_id', tournamentIds)
       .eq('finish_position', '1'),
   ])
 
   return { profiles: profiles ?? [], tournaments: tournaments ?? [], picks: picks ?? [], winners: winners ?? [] }
 }
 
-export default async function ResultsPage() {
-  const { profiles, tournaments, picks, winners } = await getResults()
+export default async function ResultsPage({ params }: Props) {
+  const rawYear = params.year?.[0] ?? null
+  const requestedYear = rawYear ? parseInt(rawYear, 10) : null
+
+  const [season, allSeasons] = await Promise.all([
+    resolveSeasonParam(requestedYear),
+    getAllSeasons(),
+  ])
+
+  if (!season) notFound()
+
+  if (season.is_current && rawYear !== null) {
+    redirect('/results')
+  }
+
+  const tournamentIds = await getSeasonTournamentIds(season.id)
+  const { profiles, tournaments, picks, winners } = await getResults(tournamentIds)
 
   // Build winner lookup: tournament_id → Set of golfer_ids who won that week
   const winnerMap: Record<number, Set<number>> = {}
@@ -52,7 +83,7 @@ export default async function ResultsPage() {
     })
   }
 
-  // Count tournament winners picked per contestant (for a season-long tally)
+  // Count tournament winners picked per contestant
   const winCounts: Record<string, number> = {}
   for (const pick of picks) {
     if (winnerMap[pick.tournament_id]?.has(pick.golfer_id)) {
@@ -66,15 +97,12 @@ export default async function ResultsPage() {
     totals[pick.user_id] = (totals[pick.user_id] ?? 0) + (pick.earnings ?? 0)
   }
 
-  // Sort profiles by total desc
   const sortedProfiles = [...profiles].sort(
     (a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0)
   )
 
-  // Only show tournaments that are active or completed
   const relevantTournaments = tournaments.filter((t) => t.is_active || t.is_completed)
 
-  // Find max earnings per tournament for gold cell highlight
   const maxByTournament: Record<number, number> = {}
   for (const t of relevantTournaments) {
     let max = 0
@@ -89,17 +117,29 @@ export default async function ResultsPage() {
   return (
     <div className="max-w-full px-4 py-10">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="font-display text-4xl font-bold text-fairway mb-2">Results Grid</h1>
-          <p className="text-fairway/60">
-            All picks and earnings by week. Sorted by total earnings.
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="font-display text-4xl font-bold text-fairway mb-2">
+              {season.year} Results Grid
+            </h1>
+            <p className="text-fairway/60">
+              All picks and earnings by week. Sorted by total earnings.
+            </p>
+          </div>
+          {allSeasons.length > 1 && (
+            <SeasonNav seasons={allSeasons} activeYear={season.year} basePath="/results" />
+          )}
         </div>
 
-        {relevantTournaments.length === 0 ? (
+        {tournamentIds.length === 0 ? (
           <div className="card text-center py-16 text-fairway/50">
             <span className="text-4xl block mb-3">⛳</span>
-            <p>No results yet. Check back after the Sony Open!</p>
+            <p>The {season.year} season hasn&apos;t started yet.</p>
+          </div>
+        ) : relevantTournaments.length === 0 ? (
+          <div className="card text-center py-16 text-fairway/50">
+            <span className="text-4xl block mb-3">⛳</span>
+            <p>No results yet. Check back after the first tournament!</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-cream-dark shadow-sm bg-white">

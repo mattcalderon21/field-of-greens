@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "seed:picks": "ts-node --project tsconfig.scripts.json scripts/seed-picks.ts",
-    "fix:golfer-names": "ts-node --project tsconfig.scripts.json scripts/fix-golfer-odds-names.ts"
+    "fix:golfer-names": "ts-node --project tsconfig.scripts.json scripts/fix-golfer-odds-names.ts",
+    "seed:historical": "ts-node --project tsconfig.scripts.json scripts/seed-historical.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

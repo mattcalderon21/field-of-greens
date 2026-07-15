@@ -1,3 +1,14 @@
+export type Season = {
+  id: number
+  year: number
+  name: string
+  start_date: string
+  end_date: string
+  total_tournaments: number
+  is_current: boolean
+  created_at: string
+}
+
 export type Profile = {
   id: string
   display_name: string
@@ -19,6 +30,7 @@ export type Tournament = {
   is_completed: boolean
   is_included_in_ond: boolean
   max_picks_per_user: number
+  season_id: number
 }
 
 export type Golfer = {

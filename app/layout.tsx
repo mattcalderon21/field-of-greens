@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Navbar from '@/components/Navbar'
 import AuthRecoveryHandler from '@/components/AuthRecoveryHandler'
+import Footer from '@/components/Footer'
 
 export const metadata: Metadata = {
   title: 'The Field of Greens',
@@ -16,13 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Navbar />
         <AuthRecoveryHandler />
         <main className="flex-1">{children}</main>
-        <footer className="bg-fairway-dark text-cream/50 py-8 mt-16">
-          <div className="max-w-7xl mx-auto px-4 text-center">
-            <p className="font-display text-cream/70 text-lg mb-1">The Field of Greens</p>
-            <p className="text-sm italic mb-3">"If you pick him, points will come."</p>
-            <p className="text-xs">2026 Season · Jan 15 – Aug 20</p>
-          </div>
-        </footer>
+        <Footer />
       </body>
     </html>
   )

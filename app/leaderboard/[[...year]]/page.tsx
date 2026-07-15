@@ -1,8 +1,17 @@
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
+import { resolveSeasonParam, getAllSeasons, getSeasonTournamentIds } from '@/lib/seasons'
+import SeasonNav from '@/components/SeasonNav'
 
-export const metadata = { title: 'Leaderboard — The Field of Greens' }
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: Props) {
+  const year = params.year?.[0] ?? null
+  return { title: year ? `${year} Leaderboard — The Field of Greens` : 'Leaderboard — The Field of Greens' }
+}
+
+type Props = { params: { year?: string[] } }
 
 type LastPickEntry = {
   golfer: string
@@ -11,7 +20,7 @@ type LastPickEntry = {
   finish_position: string | null
 }
 
-async function getLeaderboard() {
+async function getLeaderboard(tournamentIds: number[]) {
   const supabase = createClient()
 
   const { data: profiles } = await supabase
@@ -20,7 +29,16 @@ async function getLeaderboard() {
 
   if (!profiles?.length) return []
 
-  // golfer_id needed for finish_position lookup below
+  if (tournamentIds.length === 0) {
+    return profiles.map((p) => ({
+      ...p,
+      total_earnings: 0,
+      last_picks: [] as LastPickEntry[],
+      gap: 0,
+      rank: 0,
+    }))
+  }
+
   const { data: picks } = await supabase
     .from('picks')
     .select(`
@@ -28,6 +46,7 @@ async function getLeaderboard() {
       golfer:golfers(name),
       tournament:tournaments(name, is_completed, start_date)
     `)
+    .in('tournament_id', tournamentIds)
     .order('tournament_id', { ascending: false })
 
   if (!picks) return profiles.map((p) => ({
@@ -38,7 +57,6 @@ async function getLeaderboard() {
     rank: 0,
   }))
 
-  // Build a map of completed tournament metadata keyed by tournament_id
   const completedTournamentMeta = new Map<number, { name: string; start_date: string }>()
   for (const p of picks) {
     const t = p.tournament as unknown as { name: string; is_completed: boolean; start_date: string } | null
@@ -47,9 +65,6 @@ async function getLeaderboard() {
     }
   }
 
-  // Identify "last week": the most recent completed start_date, plus any other
-  // completed tournament whose start_date falls within 7 days of it (handles
-  // concurrent events like Scottish Open + ISCO Championship).
   const completedEntries = Array.from(completedTournamentMeta.entries())
 
   let latestStartDate: string | null = null
@@ -67,7 +82,6 @@ async function getLeaderboard() {
     }
   }
 
-  // Fetch finish positions from tournament_fields for last-week tournaments
   const finishMap = new Map<string, string | null>()
   if (lastWeekIds.size > 0) {
     const { data: fields } = await supabase
@@ -79,7 +93,6 @@ async function getLeaderboard() {
     }
   }
 
-  // Accumulate per-user totals and last-week picks
   const dataByUser: Record<string, { total: number; lastPicks: LastPickEntry[] }> = {}
 
   for (const p of picks) {
@@ -115,25 +128,41 @@ async function getLeaderboard() {
   return ranked
 }
 
-async function getLastCompletedTournament() {
+async function getLastCompletedTournament(tournamentIds: number[]) {
+  if (tournamentIds.length === 0) return null
   const supabase = createClient()
-
   const { data } = await supabase
     .from('tournaments')
     .select('id, name, start_date')
-    .eq('is_included_in_ond', true)
+    .in('id', tournamentIds)
     .eq('is_completed', true)
     .order('start_date', { ascending: false })
     .limit(1)
     .single()
-
   return data
 }
 
-export default async function LeaderboardPage() {
+export default async function LeaderboardPage({ params }: Props) {
+  const rawYear = params.year?.[0] ?? null
+  const requestedYear = rawYear ? parseInt(rawYear, 10) : null
+
+  const [season, allSeasons] = await Promise.all([
+    resolveSeasonParam(requestedYear),
+    getAllSeasons(),
+  ])
+
+  if (!season) notFound()
+
+  // Redirect /leaderboard/2026 → /leaderboard to avoid duplicate URLs for current season
+  if (season.is_current && rawYear !== null) {
+    redirect('/leaderboard')
+  }
+
+  const tournamentIds = await getSeasonTournamentIds(season.id)
+
   const [leaderboard, lastCompletedTournament] = await Promise.all([
-    getLeaderboard(),
-    getLastCompletedTournament(),
+    getLeaderboard(tournamentIds),
+    getLastCompletedTournament(tournamentIds),
   ])
 
   const podium = leaderboard.slice(0, 3)
@@ -146,15 +175,25 @@ export default async function LeaderboardPage() {
         <h1 className="font-display text-4xl font-bold text-fairway mb-2">
           Season Leaderboard
         </h1>
-        <p className="text-fairway/50 italic">"If you pick him, points will come."</p>
+        <p className="text-fairway/50 italic">&ldquo;If you pick him, points will come.&rdquo;</p>
         {lastCompletedTournament && (
           <p className="text-fairway/40 text-sm mt-3">
             Results through <strong className="text-fairway/60 font-medium">{lastCompletedTournament.name}</strong>
           </p>
         )}
+        {allSeasons.length > 1 && (
+          <div className="flex justify-center mt-4">
+            <SeasonNav seasons={allSeasons} activeYear={season.year} basePath="/leaderboard" />
+          </div>
+        )}
       </div>
 
-      {leaderboard.length === 0 ? (
+      {tournamentIds.length === 0 ? (
+        <div className="card text-center py-16 text-fairway/50">
+          <span className="text-4xl block mb-3">⛳</span>
+          <p>The {season.year} season hasn&apos;t started yet. Check back soon.</p>
+        </div>
+      ) : leaderboard.length === 0 ? (
         <div className="card text-center py-16 text-fairway/50">
           <span className="text-4xl block mb-3">⛳</span>
           <p>The season hasn&apos;t started yet. Check back after the Sony Open.</p>

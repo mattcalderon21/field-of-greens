@@ -1,10 +1,19 @@
 import Link from 'next/link'
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, getPurseDisplay, getTournamentStatus } from '@/lib/utils'
+import { resolveSeasonParam, getAllSeasons } from '@/lib/seasons'
+import SeasonNav from '@/components/SeasonNav'
 import type { Tournament } from '@/lib/types'
 
-export const metadata = { title: 'Schedule — The Field of Greens' }
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: Props) {
+  const year = params.year?.[0] ?? null
+  return { title: year ? `${year} Schedule — The Field of Greens` : 'Schedule — The Field of Greens' }
+}
+
+type Props = { params: { year?: string[] } }
 
 function StatusBadge({ status }: { status: 'upcoming' | 'active' | 'completed' }) {
   if (status === 'active') {
@@ -30,13 +39,14 @@ function PurseRankBadge({ rank, purse }: { rank: number | null; purse: number | 
   )
 }
 
-async function getActiveTournaments() {
+async function getActiveTournaments(seasonId: number) {
   const supabase = createClient()
   const today = new Date().toISOString().split('T')[0]
 
   const { data } = await supabase
     .from('tournaments')
     .select('*')
+    .eq('season_id', seasonId)
     .eq('is_included_in_ond', true)
     .eq('is_completed', false)
     .or(`is_active.eq.true,and(start_date.lte.${today},end_date.gte.${today})`)
@@ -44,15 +54,30 @@ async function getActiveTournaments() {
   return (data ?? []) as Tournament[]
 }
 
-export default async function SchedulePage() {
+export default async function SchedulePage({ params }: Props) {
+  const rawYear = params.year?.[0] ?? null
+  const requestedYear = rawYear ? parseInt(rawYear, 10) : null
+
+  const [season, allSeasons] = await Promise.all([
+    resolveSeasonParam(requestedYear),
+    getAllSeasons(),
+  ])
+
+  if (!season) notFound()
+
+  if (season.is_current && rawYear !== null) {
+    redirect('/schedule')
+  }
+
   const supabase = createClient()
   const [{ data: tournaments, error }, activeTournaments] = await Promise.all([
     supabase
       .from('tournaments')
       .select('*')
+      .eq('season_id', season.id)
       .eq('is_included_in_ond', true)
       .order('start_date', { ascending: true }),
-    getActiveTournaments(),
+    getActiveTournaments(season.id),
   ])
 
   if (error || !tournaments?.length) {
@@ -70,15 +95,20 @@ export default async function SchedulePage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="font-display text-4xl font-bold text-fairway mb-2">2026 OND Schedule</h1>
-        <p className="text-fairway/60">
-          {completed} of {total} tournaments complete · Sony Open through BMW Championship
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-display text-4xl font-bold text-fairway mb-2">{season.year} OND Schedule</h1>
+          <p className="text-fairway/60">
+            {completed} of {total} tournaments complete · {season.name}
+          </p>
+        </div>
+        {allSeasons.length > 1 && (
+          <SeasonNav seasons={allSeasons} activeYear={season.year} basePath="/schedule" />
+        )}
       </div>
 
-      {/* Live now banner */}
-      {activeTournaments.length > 0 && (
+      {/* Live now banner — only shown for current season */}
+      {season.is_current && activeTournaments.length > 0 && (
         <div className="mb-8 flex items-center justify-between gap-3 flex-wrap bg-gold/10 border border-gold/30 rounded-xl px-5 py-3">
           <div className="inline-flex items-center gap-2 text-gold text-sm">
             <span className="w-2 h-2 rounded-full bg-gold animate-pulse" />
@@ -101,9 +131,9 @@ export default async function SchedulePage() {
       {/* Progress bar */}
       <div className="mb-8">
         <div className="flex justify-between text-xs text-fairway/50 mb-1.5">
-          <span>Jan 15, 2026</span>
+          <span>{formatDate(season.start_date)}</span>
           <span>{completed}/{total} complete</span>
-          <span>Aug 20, 2026</span>
+          <span>{formatDate(season.end_date)}</span>
         </div>
         <div className="h-2 bg-cream-dark rounded-full overflow-hidden">
           <div
