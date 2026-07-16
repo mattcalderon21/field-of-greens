@@ -1,5 +1,5 @@
--- 1-A: Create seasons table
-CREATE TABLE public.seasons (
+-- 1-A: Create seasons table (idempotent)
+CREATE TABLE IF NOT EXISTS public.seasons (
   id                SERIAL PRIMARY KEY,
   year              INTEGER NOT NULL,
   name              TEXT NOT NULL,
@@ -11,20 +11,26 @@ CREATE TABLE public.seasons (
   CONSTRAINT seasons_year_unique UNIQUE (year)
 );
 ALTER TABLE public.seasons ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "seasons_select_all" ON public.seasons;
 CREATE POLICY "seasons_select_all" ON public.seasons FOR SELECT USING (true);
-CREATE POLICY "seasons_admin_all"  ON public.seasons FOR ALL USING (public.is_current_user_admin());
+
+DROP POLICY IF EXISTS "seasons_admin_all" ON public.seasons;
+CREATE POLICY "seasons_admin_all" ON public.seasons FOR ALL USING (public.is_current_user_admin());
+
 -- Enforce only one current season at DB level
-CREATE UNIQUE INDEX idx_seasons_one_current ON public.seasons (is_current) WHERE is_current = TRUE;
-CREATE INDEX idx_seasons_year ON public.seasons (year);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_seasons_one_current ON public.seasons (is_current) WHERE is_current = TRUE;
+CREATE INDEX IF NOT EXISTS idx_seasons_year ON public.seasons (year);
 
--- 1-B: Insert 2026 season
+-- 1-B: Insert 2026 season (skip if already exists)
 INSERT INTO public.seasons (year, name, start_date, end_date, total_tournaments, is_current)
-VALUES (2026, '2026 One-and-Done Season', '2026-01-15', '2026-08-20', 36, TRUE);
+VALUES (2026, '2026 One-and-Done Season', '2026-01-15', '2026-08-20', 36, TRUE)
+ON CONFLICT (year) DO NOTHING;
 
--- 1-C: Add nullable season_id to tournaments (nullable first for safe backfill)
-ALTER TABLE public.tournaments ADD COLUMN season_id INTEGER REFERENCES public.seasons(id);
+-- 1-C: Add nullable season_id to tournaments (skip if already exists)
+ALTER TABLE public.tournaments ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES public.seasons(id);
 
--- 1-D: Backfill all existing tournaments to the 2026 season (run in transaction)
+-- 1-D: Backfill all existing tournaments to 2026 season (WHERE season_id IS NULL makes it idempotent)
 BEGIN;
 UPDATE public.tournaments
   SET season_id = (SELECT id FROM public.seasons WHERE year = 2026)
@@ -38,7 +44,7 @@ COMMIT;
 
 -- 1-E: Apply NOT NULL constraint and index
 ALTER TABLE public.tournaments ALTER COLUMN season_id SET NOT NULL;
-CREATE INDEX idx_tournaments_season ON public.tournaments (season_id);
+CREATE INDEX IF NOT EXISTS idx_tournaments_season ON public.tournaments (season_id);
 
 -- 1-F: RPC to atomically swap the current season
 CREATE OR REPLACE FUNCTION public.set_current_season(p_season_id INTEGER)
@@ -49,8 +55,10 @@ BEGIN
 END;
 $$;
 
--- 1-G: Update v_leaderboard to scope to current season
-CREATE OR REPLACE VIEW public.v_leaderboard AS
+-- 1-G: Update views to scope to current season.
+-- Must DROP first — CREATE OR REPLACE cannot remove columns from an existing view.
+DROP VIEW IF EXISTS public.v_leaderboard CASCADE;
+CREATE VIEW public.v_leaderboard AS
 SELECT
   p.user_id,
   pr.display_name,
@@ -62,8 +70,8 @@ JOIN public.seasons s ON s.id = t.season_id AND s.is_current = TRUE
 GROUP BY p.user_id, pr.display_name
 ORDER BY total_earnings DESC;
 
--- 1-G: Update v_burned_golfers to scope to current season
-CREATE OR REPLACE VIEW public.v_burned_golfers AS
+DROP VIEW IF EXISTS public.v_burned_golfers CASCADE;
+CREATE VIEW public.v_burned_golfers AS
 SELECT DISTINCT
   p.user_id,
   p.golfer_id
