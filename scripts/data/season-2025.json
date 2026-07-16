@@ -1,0 +1,278 @@
+{
+  "season": {
+    "year": 2025,
+    "name": "2025 One-and-Done Season",
+    "start_date": "2025-01-02",
+    "end_date": "2025-08-14",
+    "total_tournaments": 38
+  },
+  "tournaments": [
+    {
+      "name": "The Sentry",
+      "start_date": "2025-01-02",
+      "course": "Plantation Course at Kapalua",
+      "location": "Kapalua, Maui, HI",
+      "purse": 20000000
+    },
+    {
+      "name": "Sony Open in Hawaii",
+      "start_date": "2025-01-09",
+      "course": "Waialae Country Club",
+      "location": "Honolulu, HI",
+      "purse": 8700000
+    },
+    {
+      "name": "The American Express",
+      "start_date": "2025-01-16",
+      "course": "Pete Dye Stadium Course",
+      "location": "La Quinta, CA",
+      "purse": 8800000
+    },
+    {
+      "name": "Farmers Insurance Open",
+      "start_date": "2025-01-22",
+      "course": "Torrey Pines (South Course)",
+      "location": "San Diego, CA",
+      "purse": 9300000
+    },
+    {
+      "name": "AT&T Pebble Beach Pro-Am",
+      "start_date": "2025-01-30",
+      "course": "Pebble Beach Golf Links",
+      "location": "Pebble Beach, CA",
+      "purse": 20000000
+    },
+    {
+      "name": "WM Phoenix Open",
+      "start_date": "2025-02-06",
+      "course": "TPC Scottsdale (Stadium Course)",
+      "location": "Scottsdale, AZ",
+      "purse": 9200000
+    },
+    {
+      "name": "The Genesis Invitational",
+      "start_date": "2025-02-13",
+      "course": "The Riviera Country Club",
+      "location": "Pacific Palisades, CA",
+      "purse": 20000000
+    },
+    {
+      "name": "Mexico Open at VidantaWorld",
+      "start_date": "2025-02-20",
+      "course": "VidantaWorld",
+      "location": "Vallarta, MEX",
+      "purse": 7000000
+    },
+    {
+      "name": "Cognizant Classic",
+      "start_date": "2025-02-27",
+      "course": "PGA National (The Champion Course)",
+      "location": "Palm Beach Gardens, FL",
+      "purse": 9200000
+    },
+    {
+      "name": "Arnold Palmer Invitational",
+      "start_date": "2025-03-06",
+      "course": "Bay Hill Club & Lodge",
+      "location": "Orlando, FL",
+      "purse": 20000000
+    },
+    {
+      "name": "Puerto Rico Open",
+      "start_date": "2025-03-06",
+      "course": "Grand Reserve Golf Club",
+      "location": "Rio Grande, PUR",
+      "purse": 4000000
+    },
+    {
+      "name": "THE PLAYERS Championship",
+      "start_date": "2025-03-13",
+      "course": "TPC Sawgrass (Stadium Course)",
+      "location": "Ponte Vedra Beach, FL",
+      "purse": 25000000
+    },
+    {
+      "name": "Valspar Championship",
+      "start_date": "2025-03-20",
+      "course": "Innisbrook Resort (Copperhead Course)",
+      "location": "Palm Harbor, FL",
+      "purse": 8700000
+    },
+    {
+      "name": "Texas Children's Houston Open",
+      "start_date": "2025-03-27",
+      "course": "Memorial Park Golf Course",
+      "location": "Houston, TX",
+      "purse": 9500000
+    },
+    {
+      "name": "Valero Texas Open",
+      "start_date": "2025-04-03",
+      "course": "TPC San Antonio (Oaks Course)",
+      "location": "San Antonio, TX",
+      "purse": 9500000
+    },
+    {
+      "name": "Masters Tournament",
+      "start_date": "2025-04-10",
+      "course": "Augusta National Golf Club",
+      "location": "Augusta, GA",
+      "purse": 21000000
+    },
+    {
+      "name": "RBC Heritage",
+      "start_date": "2025-04-17",
+      "course": "Harbour Town Golf Links",
+      "location": "Hilton Head Island, SC",
+      "purse": 20000000
+    },
+    {
+      "name": "Corales Puntacana Championship",
+      "start_date": "2025-04-17",
+      "course": "Puntacana Resort & Club (Corales Course)",
+      "location": "Punta Cana, DOM",
+      "purse": 4000000
+    },
+    {
+      "name": "Zurich Classic of New Orleans",
+      "start_date": "2025-04-24",
+      "course": "TPC Louisiana",
+      "location": "Avondale, LA",
+      "purse": 9200000
+    },
+    {
+      "name": "THE CJ CUP Byron Nelson",
+      "start_date": "2025-05-01",
+      "course": "TPC Craig Ranch",
+      "location": "McKinney, TX",
+      "purse": 9900000
+    },
+    {
+      "name": "Truist Championship",
+      "start_date": "2025-05-08",
+      "course": "The Philadelphia Cricket Club (Wissahickon Course)",
+      "location": "Philadelphia, PA",
+      "purse": 20000000
+    },
+    {
+      "name": "Myrtle Beach Classic",
+      "start_date": "2025-05-08",
+      "course": "Dunes Golf and Beach Club",
+      "location": "Myrtle Beach, SC",
+      "purse": 4000000
+    },
+    {
+      "name": "PGA Championship",
+      "start_date": "2025-05-15",
+      "course": "Quail Hollow Club",
+      "location": "Charlotte, NC",
+      "purse": 19000000
+    },
+    {
+      "name": "Charles Schwab Challenge",
+      "start_date": "2025-05-22",
+      "course": "Colonial Country Club",
+      "location": "Fort Worth, TX",
+      "purse": 9500000
+    },
+    {
+      "name": "The Memorial Tournament",
+      "start_date": "2025-05-29",
+      "course": "Muirfield Village Golf Club",
+      "location": "Dublin, OH",
+      "purse": 20000000
+    },
+    {
+      "name": "RBC Canadian Open",
+      "start_date": "2025-06-05",
+      "course": "TPC Toronto at Osprey Valley (North Course)",
+      "location": "Caledon, Ontario CAN",
+      "purse": 9800000
+    },
+    {
+      "name": "U.S. Open",
+      "start_date": "2025-06-12",
+      "course": "Oakmont Country Club",
+      "location": "Oakmont, PA",
+      "purse": 21500000
+    },
+    {
+      "name": "Travelers Championship",
+      "start_date": "2025-06-19",
+      "course": "TPC River Highlights",
+      "location": "Cromwell, CT",
+      "purse": 20000000
+    },
+    {
+      "name": "Rocket Mortgage Classic",
+      "start_date": "2025-06-26",
+      "course": "Detroit Golf Club",
+      "location": "Detroit, MI",
+      "purse": 9600000
+    },
+    {
+      "name": "John Deere Classic",
+      "start_date": "2025-07-03",
+      "course": "TPC Deere Run",
+      "location": "Silvis, IL",
+      "purse": 8400000
+    },
+    {
+      "name": "Genesis Scottish Open",
+      "start_date": "2025-07-10",
+      "course": "The Renaissance Club",
+      "location": "North Berwick, SCO",
+      "purse": 9000000
+    },
+    {
+      "name": "ISCO Championship",
+      "start_date": "2025-07-10",
+      "course": "Hurstbourne Country Club (Championship Course)",
+      "location": "Louisville, KY",
+      "purse": 4000000
+    },
+    {
+      "name": "The Open Championship",
+      "start_date": "2025-07-17",
+      "course": "Royal Portrush Golf Club",
+      "location": "Portrush, NIR",
+      "purse": 17000000
+    },
+    {
+      "name": "Barracuda Championship",
+      "start_date": "2025-07-17",
+      "course": "Tahoe Mountain Club (Old Greenwood)",
+      "location": "Truckee, CA",
+      "purse": 4000000
+    },
+    {
+      "name": "3M Open",
+      "start_date": "2025-07-24",
+      "course": "TPC Twin Cities",
+      "location": "Blaine, MN",
+      "purse": 8400000
+    },
+    {
+      "name": "Wyndham Championship",
+      "start_date": "2025-07-31",
+      "course": "Sedgefield Country Club",
+      "location": "Greensboro, NC",
+      "purse": 8200000
+    },
+    {
+      "name": "FedEx St. Jude Championship",
+      "start_date": "2025-08-07",
+      "course": "TPC Southwind",
+      "location": "Memphis, TN",
+      "purse": 20000000
+    },
+    {
+      "name": "BMW Championship",
+      "start_date": "2025-08-14",
+      "course": "Caves Valley Golf Club",
+      "location": "Owings Mills, MD",
+      "purse": 20000000
+    }
+  ],
+  "picks": []
+}

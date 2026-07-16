@@ -41,6 +41,15 @@ type SeasonData = {
   total_tournaments?: number
 }
 
+type TournamentRow = {
+  name: string
+  start_date: string   // YYYY-MM-DD
+  end_date?: string    // YYYY-MM-DD (defaults to start_date)
+  course?: string
+  location?: string
+  purse?: number
+}
+
 type PickRow = {
   contestant: string         // matches display_name in profiles
   tournament_name: string
@@ -56,6 +65,7 @@ type PickRow = {
 
 type ImportFile = {
   season: SeasonData
+  tournaments?: TournamentRow[]  // optional: pre-create tournament rows before picks arrive
   picks: PickRow[]
 }
 
@@ -121,26 +131,7 @@ async function run() {
     }
   }
 
-  // 2. Load profiles (needed to map contestant name → user_id)
-  const { data: profiles } = await supabase.from('profiles').select('id, display_name')
-  const profileMap = new Map<string, string>((profiles ?? []).map((p: { id: string; display_name: string }) => [p.display_name.trim().toLowerCase(), p.id]))
-
-  // Validate all contestant names upfront
-  const missingContestants = new Set<string>()
-  for (const pick of input.picks) {
-    if (!profileMap.has(pick.contestant.trim().toLowerCase())) {
-      missingContestants.add(pick.contestant)
-    }
-  }
-  if (missingContestants.size > 0) {
-    console.error('ERROR: These contestant names were not found in profiles:')
-    for (const name of missingContestants) console.error(`  - "${name}"`)
-    console.error('\nFix: ensure display_name in profiles matches exactly (case-insensitive).')
-    process.exit(1)
-  }
-  console.log(`✓ All ${new Set(input.picks.map((p) => p.contestant)).size} contestants matched`)
-
-  // 3. Upsert season row
+  // 2. Upsert season row first (needed before tournaments can reference it)
   if (execute) {
     const { data: seasonRow, error: seasonErr } = await supabase
       .from('seasons')
@@ -160,11 +151,62 @@ async function run() {
     console.log(`  [dry-run] Would upsert season: ${input.season.name}`)
   }
 
-  // Reload season id
+  // Resolve season id (may already exist from a previous partial run)
   const { data: seasonRow } = await supabase.from('seasons').select('id').eq('year', targetYear).single()
   const seasonId: number = execute ? (seasonRow as { id: number }).id : -1
 
-  // 4. Group picks by tournament
+  // 3. Pre-create tournament rows from optional tournaments[] (can run before picks are added)
+  if (input.tournaments && input.tournaments.length > 0) {
+    console.log(`\n📋 Pre-creating ${input.tournaments.length} tournament rows...`)
+    if (execute) {
+      for (const t of input.tournaments) {
+        const { error: tErr } = await supabase
+          .from('tournaments')
+          .upsert({
+            name: t.name,
+            start_date: t.start_date,
+            end_date: t.end_date ?? t.start_date,
+            course: t.course ?? '',
+            location: t.location ?? '',
+            purse: t.purse ?? null,
+            season_id: seasonId,
+            is_included_in_ond: true,
+            is_completed: true,
+            is_active: false,
+            max_picks_per_user: 1,
+          }, { onConflict: 'name,start_date' })
+        if (tErr) console.error(`  Error upserting tournament "${t.name}":`, tErr.message)
+        else console.log(`  ✓ ${t.name}`)
+      }
+    } else {
+      for (const t of input.tournaments) {
+        console.log(`  [dry-run] Tournament: ${t.name} (${t.start_date})`)
+      }
+    }
+  }
+
+  // 4. Load profiles (needed to map contestant name → user_id)
+  const { data: profiles } = await supabase.from('profiles').select('id, display_name')
+  const profileMap = new Map<string, string>((profiles ?? []).map((p: { id: string; display_name: string }) => [p.display_name.trim().toLowerCase(), p.id]))
+
+  // Validate all contestant names upfront (skip if no picks yet)
+  const missingContestants = new Set<string>()
+  for (const pick of input.picks) {
+    if (!profileMap.has(pick.contestant.trim().toLowerCase())) {
+      missingContestants.add(pick.contestant)
+    }
+  }
+  if (missingContestants.size > 0) {
+    console.error('ERROR: These contestant names were not found in profiles:')
+    for (const name of missingContestants) console.error(`  - "${name}"`)
+    console.error('\nFix: ensure display_name in profiles matches exactly (case-insensitive).')
+    process.exit(1)
+  }
+  if (input.picks.length > 0) {
+    console.log(`✓ All ${new Set(input.picks.map((p) => p.contestant)).size} contestants matched`)
+  }
+
+  // 5. Group picks by tournament
   const tournamentGroups = new Map<string, PickRow[]>()
   for (const pick of input.picks) {
     const key = `${pick.tournament_name}__${pick.tournament_start_date}`
