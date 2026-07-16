@@ -46,6 +46,10 @@ COMMIT;
 ALTER TABLE public.tournaments ALTER COLUMN season_id SET NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tournaments_season ON public.tournaments (season_id);
 
+-- 1-E2: Add unique constraint needed for upsert by (name, start_date)
+ALTER TABLE public.tournaments
+  ADD CONSTRAINT IF NOT EXISTS tournaments_name_start_date_unique UNIQUE (name, start_date);
+
 -- 1-F: RPC to atomically swap the current season
 CREATE OR REPLACE FUNCTION public.set_current_season(p_season_id INTEGER)
 RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
