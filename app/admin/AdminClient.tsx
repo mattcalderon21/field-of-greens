@@ -183,6 +183,8 @@ function TournamentsPanel() {
 function FieldPanel() {
   const supabase = createClient()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all'>('all')
   const [selectedTournament, setSelectedTournament] = useState<number | null>(null)
   const [field, setField] = useState<TournamentField[]>([])
   const [allGolfers, setAllGolfers] = useState<Golfer[]>([])
@@ -201,9 +203,13 @@ function FieldPanel() {
     Promise.all([
       supabase.from('tournaments').select('*').order('start_date', { ascending: true }),
       supabase.from('golfers').select('*').order('name'),
-    ]).then(([{ data: t }, { data: g }]) => {
+      supabase.from('seasons').select('*').order('year', { ascending: false }),
+    ]).then(([{ data: t }, { data: g }, { data: sData }]) => {
       setTournaments(t ?? [])
       setAllGolfers(g ?? [])
+      setSeasons(sData ?? [])
+      const current = (sData ?? []).find((s: Season) => s.is_current)
+      if (current) setSeasonFilter(current.id)
       setLoading(false)
     })
   }, [supabase])
@@ -300,9 +306,30 @@ function FieldPanel() {
 
   if (loading) return <div className="text-fairway/50 text-center py-8">Loading…</div>
 
+  const filteredTournaments = tournaments.filter(
+    (t) => seasonFilter === 'all' || t.season_id === seasonFilter
+  )
+
   return (
     <div>
       <h2 className="font-display text-xl font-bold text-fairway mb-4">Field Management</h2>
+
+      {seasons.length > 1 && (
+        <div className="mb-3">
+          <label className="label">Season</label>
+          <select
+            className="input max-w-xs"
+            value={seasonFilter}
+            onChange={(e) => {
+              setSeasonFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))
+              setSelectedTournament(null)
+            }}
+          >
+            <option value="all">All seasons</option>
+            {seasons.map((s) => <option key={s.id} value={s.id}>{s.year}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="mb-4">
         <label className="label">Select Tournament</label>
@@ -312,7 +339,7 @@ function FieldPanel() {
           onChange={(e) => handleSelectTournament(Number(e.target.value))}
         >
           <option value="">— Select a tournament —</option>
-          {tournaments.map((t) => (
+          {filteredTournaments.map((t) => (
             <option key={t.id} value={t.id}>
               {formatDate(t.start_date)} · {t.name}
             </option>
@@ -437,6 +464,8 @@ function FieldPanel() {
 function ResultsPanel() {
   const supabase = createClient()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all'>('all')
   const [selectedTournament, setSelectedTournament] = useState<number | null>(null)
   const [field, setField] = useState<TournamentField[]>([])
   const [pickedGolferIds, setPickedGolferIds] = useState<Set<number>>(new Set())
@@ -450,12 +479,19 @@ function ResultsPanel() {
   const [bulkImporting, setBulkImporting] = useState(false)
 
   useEffect(() => {
-    supabase
-      .from('tournaments')
-      .select('*')
-      .or('is_active.eq.true,is_completed.eq.true')
-      .order('start_date', { ascending: false })
-      .then(({ data }) => setTournaments(data ?? []))
+    Promise.all([
+      supabase
+        .from('tournaments')
+        .select('*')
+        .or('is_active.eq.true,is_completed.eq.true')
+        .order('start_date', { ascending: false }),
+      supabase.from('seasons').select('*').order('year', { ascending: false }),
+    ]).then(([{ data: tData }, { data: sData }]) => {
+      setTournaments(tData ?? [])
+      setSeasons(sData ?? [])
+      const current = (sData ?? []).find((s: Season) => s.is_current)
+      if (current) setSeasonFilter(current.id)
+    })
   }, [supabase])
 
   const loadField = async (tid: number) => {
@@ -613,9 +649,30 @@ function ResultsPanel() {
     setBulkImporting(false)
   }
 
+  const filteredTournamentsResults = tournaments.filter(
+    (t) => seasonFilter === 'all' || t.season_id === seasonFilter
+  )
+
   return (
     <div>
       <h2 className="font-display text-xl font-bold text-fairway mb-4">Results Entry</h2>
+
+      {seasons.length > 1 && (
+        <div className="mb-3">
+          <label className="label">Season</label>
+          <select
+            className="input max-w-xs"
+            value={seasonFilter}
+            onChange={(e) => {
+              setSeasonFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))
+              setSelectedTournament(null)
+            }}
+          >
+            <option value="all">All seasons</option>
+            {seasons.map((s) => <option key={s.id} value={s.id}>{s.year}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="mb-4">
         <label className="label">Select Tournament</label>
@@ -625,7 +682,7 @@ function ResultsPanel() {
           onChange={(e) => handleSelectTournament(Number(e.target.value))}
         >
           <option value="">— Select a tournament —</option>
-          {tournaments.map((t) => (
+          {filteredTournamentsResults.map((t) => (
             <option key={t.id} value={t.id}>
               {formatDate(t.start_date)} · {t.name}
             </option>
@@ -736,6 +793,8 @@ function ResultsPanel() {
 function PicksPanel() {
   const supabase = createClient()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all'>('all')
   const [profiles, setProfiles] = useState<{ id: string; display_name: string }[]>([])
   const [selectedTournament, setSelectedTournament] = useState<number | null>(null)
   const [picks, setPicks] = useState<Pick[]>([])
@@ -752,9 +811,13 @@ function PicksPanel() {
     Promise.all([
       supabase.from('tournaments').select('*').order('start_date', { ascending: false }),
       supabase.from('profiles').select('id, display_name').order('display_name'),
-    ]).then(([{ data: t }, { data: p }]) => {
+      supabase.from('seasons').select('*').order('year', { ascending: false }),
+    ]).then(([{ data: t }, { data: p }, { data: sData }]) => {
       setTournaments(t ?? [])
       setProfiles(p ?? [])
+      setSeasons(sData ?? [])
+      const current = (sData ?? []).find((s: Season) => s.is_current)
+      if (current) setSeasonFilter(current.id)
     })
   }, [supabase])
 
@@ -840,9 +903,30 @@ function PicksPanel() {
     if (selectedTournament) await loadPicks(selectedTournament)
   }
 
+  const filteredTournamentsPicks = tournaments.filter(
+    (t) => seasonFilter === 'all' || t.season_id === seasonFilter
+  )
+
   return (
     <div>
       <h2 className="font-display text-xl font-bold text-fairway mb-4">Picks Overview</h2>
+
+      {seasons.length > 1 && (
+        <div className="mb-3">
+          <label className="label">Season</label>
+          <select
+            className="input max-w-xs"
+            value={seasonFilter}
+            onChange={(e) => {
+              setSeasonFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))
+              setSelectedTournament(null)
+            }}
+          >
+            <option value="all">All seasons</option>
+            {seasons.map((s) => <option key={s.id} value={s.id}>{s.year}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="mb-4">
         <label className="label">Select Tournament</label>
@@ -852,7 +936,7 @@ function PicksPanel() {
           onChange={(e) => { const v = Number(e.target.value); setSelectedTournament(v); loadPicks(v) }}
         >
           <option value="">— Select a tournament —</option>
-          {tournaments.map((t) => (
+          {filteredTournamentsPicks.map((t) => (
             <option key={t.id} value={t.id}>{formatDate(t.start_date)} · {t.name}</option>
           ))}
         </select>
