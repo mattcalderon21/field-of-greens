@@ -371,9 +371,12 @@ export default function PicksClient({ userId, profile, activeTournaments, burned
       )
 
       if (error) {
+        const msg = error.message?.includes('golfer_already_picked_this_season')
+          ? 'That golfer has already been used this season.'
+          : `Failed to save pick: ${error.message}`
         setTournamentStates((prev) => ({
           ...prev,
-          [tournamentId]: { ...prev[tournamentId], saving: false, error: `Failed to save pick: ${error.message}` },
+          [tournamentId]: { ...prev[tournamentId], saving: false, error: msg },
         }))
         return
       }

@@ -806,6 +806,7 @@ function PicksPanel() {
   const [addGolferId, setAddGolferId] = useState<number | ''>('')
   const [addMsg, setAddMsg] = useState<string | null>(null)
   const [addingPick, setAddingPick] = useState(false)
+  const [duplicateKeys, setDuplicateKeys] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     Promise.all([
@@ -842,6 +843,25 @@ function PicksPanel() {
         earnings: tf.earnings as number | null,
       }))
     )
+
+    // Compute duplicate keys: any (user_id, golfer_id) picked more than once this season
+    const selectedT = tournaments.find((t) => t.id === tid)
+    if (selectedT?.season_id) {
+      const seasonTIds = tournaments
+        .filter((t) => t.season_id === selectedT.season_id)
+        .map((t) => t.id)
+      const { data: seasonPicksData } = await supabase
+        .from('picks')
+        .select('user_id, golfer_id')
+        .in('tournament_id', seasonTIds)
+      const counts = new Map<string, number>()
+      for (const sp of seasonPicksData ?? []) {
+        const k = `${sp.user_id}:${sp.golfer_id}`
+        counts.set(k, (counts.get(k) ?? 0) + 1)
+      }
+      setDuplicateKeys(new Set(Array.from(counts.entries()).filter(([, n]) => n > 1).map(([k]) => k)))
+    }
+
     setLoading(false)
   }
 
@@ -1020,7 +1040,12 @@ function PicksPanel() {
                           ))}
                         </select>
                       ) : (
-                        golferName
+                        <span className="flex items-center gap-2">
+                          {golferName}
+                          {duplicateKeys.has(`${pick.user_id}:${pick.golfer_id}`) && (
+                            <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Duplicate</span>
+                          )}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right earnings-num text-fairway">
