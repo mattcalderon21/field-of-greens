@@ -6,6 +6,17 @@ import SeasonNav from '@/components/SeasonNav'
 
 export const dynamic = 'force-dynamic'
 
+// Normalizes for duplicate-golfer-row detection (e.g. "Ludvig Åberg" vs "Ludvig  Aberg" —
+// a stray diacritic or whitespace variant created by a data import).
+function normalizeGolferName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
 export async function generateMetadata({ params }: Props) {
   const year = params.year?.[0] ?? null
   return { title: year ? `${year} Results — The Field of Greens` : 'Results — The Field of Greens' }
@@ -70,16 +81,52 @@ export default async function ResultsPage({ params }: Props) {
     winnerMap[w.tournament_id].add(w.golfer_id)
   }
 
+  // Detect the same golfer counted (earnings > 0) in more than one week this season —
+  // usually means a duplicate golfer row slipped past the burned-golfer trigger (e.g. a
+  // stray whitespace/diacritic variant created by a data import).
+  const earningsOccurrencesByKey: Record<string, number> = {}
+  for (const pick of picks) {
+    const name = (pick.golfer as unknown as { name: string } | null)?.name
+    if (!name || !((pick.earnings ?? 0) > 0)) continue
+    const key = `${pick.user_id}::${normalizeGolferName(name)}`
+    earningsOccurrencesByKey[key] = (earningsOccurrencesByKey[key] ?? 0) + 1
+  }
+  const duplicateKeys = new Set(
+    Object.keys(earningsOccurrencesByKey).filter((k) => earningsOccurrencesByKey[k] > 1)
+  )
+
+  const tournamentNameById: Record<number, string> = {}
+  for (const t of tournaments) tournamentNameById[t.id] = t.name
+
+  const duplicateDetailsMap: Record<string, { displayName: string; golferName: string; tournamentNames: string[] }> = {}
+  for (const pick of picks) {
+    const name = (pick.golfer as unknown as { name: string } | null)?.name
+    if (!name || !((pick.earnings ?? 0) > 0)) continue
+    const key = `${pick.user_id}::${normalizeGolferName(name)}`
+    if (!duplicateKeys.has(key)) continue
+    if (!duplicateDetailsMap[key]) {
+      duplicateDetailsMap[key] = {
+        displayName: profiles.find((p) => p.id === pick.user_id)?.display_name ?? 'Unknown',
+        golferName: name,
+        tournamentNames: [],
+      }
+    }
+    duplicateDetailsMap[key].tournamentNames.push(tournamentNameById[pick.tournament_id] ?? `Tournament ${pick.tournament_id}`)
+  }
+  const duplicateDetails = Object.values(duplicateDetailsMap)
+
   // Build pick lookup: user_id → tournament_id → pick[]
-  const pickMap: Record<string, Record<number, Array<{ golfer: string; earnings: number; is_locked: boolean; isWinner: boolean }>>> = {}
+  const pickMap: Record<string, Record<number, Array<{ golfer: string; earnings: number; is_locked: boolean; isWinner: boolean; isDuplicate: boolean }>>> = {}
   for (const pick of picks) {
     if (!pickMap[pick.user_id]) pickMap[pick.user_id] = {}
     if (!pickMap[pick.user_id][pick.tournament_id]) pickMap[pick.user_id][pick.tournament_id] = []
+    const name = (pick.golfer as unknown as { name: string } | null)?.name ?? '—'
     pickMap[pick.user_id][pick.tournament_id].push({
-      golfer: (pick.golfer as unknown as { name: string } | null)?.name ?? '—',
+      golfer: name,
       earnings: pick.earnings ?? 0,
       is_locked: pick.is_locked ?? false,
       isWinner: winnerMap[pick.tournament_id]?.has(pick.golfer_id) ?? false,
+      isDuplicate: duplicateKeys.has(`${pick.user_id}::${normalizeGolferName(name)}`),
     })
   }
 
@@ -130,6 +177,24 @@ export default async function ResultsPage({ params }: Props) {
             <SeasonNav seasons={allSeasons} activeYear={season.year} basePath="/results" />
           )}
         </div>
+
+        {duplicateDetails.length > 0 && (
+          <div className="mb-6 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="font-semibold flex items-center gap-1.5">
+              ⚠️ Duplicate pick detected
+            </div>
+            <ul className="mt-1.5 space-y-1 list-disc list-inside">
+              {duplicateDetails.map((d, i) => (
+                <li key={i}>
+                  <strong>{d.displayName}</strong> has earnings counted for{' '}
+                  <strong>{d.golferName}</strong> in more than one week this season:{' '}
+                  {d.tournamentNames.join(', ')}. This usually means a duplicate golfer row
+                  exists in the database — merge the golfer entries and zero out the extra pick.
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {tournamentIds.length === 0 ? (
           <div className="card text-center py-16 text-fairway/50">
@@ -223,6 +288,14 @@ export default async function ResultsPage({ params }: Props) {
                                   {isTopEarner && pk.earnings > 0 && (
                                     <span className="text-gold text-xs">⭐</span>
                                   )}
+                                  {pk.isDuplicate && (
+                                    <span
+                                      className="text-xs"
+                                      title="Possible duplicate pick — this golfer is counted for earnings in more than one week this season"
+                                    >
+                                      ⚠️
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             ))
@@ -247,6 +320,7 @@ export default async function ResultsPage({ params }: Props) {
           <span className="flex items-center gap-1"><span>⭐</span> Week high</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 ring-2 ring-inset ring-emerald-400" /> 🏆 Picked the tournament winner</span>
           <span className="flex items-center gap-1"><span className="text-fairway/25">—</span> No pick / missed deadline</span>
+          <span className="flex items-center gap-1"><span>⚠️</span> Possible duplicate pick (same golfer counted twice this season)</span>
         </div>
       </div>
     </div>
